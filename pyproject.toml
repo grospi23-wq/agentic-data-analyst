@@ -1,0 +1,14 @@
+[project]
+name = "agentic-data-analyst"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "logfire>=4.24.0",
+    "mcp>=1.26.0",
+    "pandas>=3.0.0",
+    "plotly>=6.5.2",
+    "pydantic-ai>=1.59.0",
+    "python-dotenv>=1.2.1",
+]
