@@ -1,5 +1,17 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Literal, Optional
+
+
+class SpecialistType(str, Enum):
+    """Domain classification used to select the analyst specialist prompt."""
+    RETAIL = "RETAIL"
+    FINANCE = "FINANCE"
+    SPORTS = "SPORTS"
+    HEALTHCARE = "HEALTHCARE"
+    LOGISTICS = "LOGISTICS"
+    GENERAL = "GENERAL"
 
 
 class AnalysisStrategy(BaseModel):
@@ -12,6 +24,25 @@ class AnalysisStrategy(BaseModel):
     id_like_columns: List[str]
     excluded_from_profiling: List[str]
     correlation_columns: List[str]
+    specialist_type: SpecialistType = SpecialistType.GENERAL
+
+
+class InsightScore(BaseModel):
+    """Per-insight quality score produced by the Critic's Track 2 evaluation."""
+    insight_id: str = Field(..., description="Short slug identifier (e.g. 'insight_1').")
+    insight_summary: str = Field(..., description="One-sentence summary of the insight being scored.")
+    statistical_strength: float = Field(..., ge=0.0, le=1.0, description="How statistically robust (effect size, sample size)?")
+    novelty_score: float = Field(..., ge=0.0, le=1.0, description="How surprising relative to domain baseline expectations?")
+    decision_leverage: float = Field(..., ge=0.0, le=1.0, description="How directly actionable for business decisions?")
+    value_score: float = Field(..., ge=0.0, le=1.0, description="0.4*statistical_strength + 0.3*novelty_score + 0.3*decision_leverage.")
+    value_tier: Literal["low_value", "moderate_value", "high_value"]
+
+
+class RevisionRewrite(BaseModel):
+    """Structured fix instruction emitted by the Critic for a single failing insight."""
+    insight_id: str = Field(..., description="Which insight needs to be revised.")
+    issue_type: str = Field(..., description="Category: 'math_error', 'id_misuse', 'hallucination', 'direction_error'.")
+    fix_instruction: str = Field(..., description="Specific, actionable instruction for the Analyst.")
 
 
 class CriticalFinding(BaseModel):
@@ -34,6 +65,12 @@ class CriticReport(BaseModel):
     approved: bool
     score: float
     findings: List[CriticalFinding]
+    # Track 2: insight value scoring
+    insight_scores: List[InsightScore] = Field(default_factory=list)
+    overall_value_score: float = Field(default=0.0, description="Mean value_score across all scored insights.")
+    low_value_insights: List[str] = Field(default_factory=list, description="insight_ids with value_tier == 'low_value'.")
+    structural_failures: List[str] = Field(default_factory=list, description="Descriptions of hard structural errors (math, ID misuse, hallucination).")
+    required_rewrites: List[RevisionRewrite] = Field(default_factory=list, description="Structured revision instructions for retry attempts.")
     revision_instructions: Optional[str] = None
 
     @model_validator(mode="after")
@@ -85,14 +122,35 @@ class MultiSheetStrategy(BaseModel):
     joins_to_execute: List[JoinInstruction]
     cross_sheet_hypothesis: str
     reasoning: str
+    specialist_type: SpecialistType = SpecialistType.GENERAL
 
+
+class ChartDataPoint(BaseModel):
+    label: str = Field(..., description="The category or x-axis label (e.g., 'Bikes', '2023').")
+    value: float = Field(..., description="The numerical value for this point.")
+
+class ChartSpec(BaseModel):
+    """Specification for a deterministic, non-hallucinated chart."""
+    chart_type: Literal["bar", "line", "pie"]
+    title: str = Field(..., description="A short, descriptive title for the chart.")
+    x_label: Optional[str] = Field(default=None, description="Label for the X axis (if applicable).")
+    y_label: Optional[str] = Field(default=None, description="Label for the Y axis (if applicable).")
+    data_points: List[ChartDataPoint] = Field(
+        ..., 
+        max_length=7, 
+        description="Limit to max 7 data points for visual clarity on the slide."
+    )
 
 class SlideContent(BaseModel):
-    slide_type: Literal["title", "hypothesis", "finding", "limitation", "conclusion"]
+    slide_type: Literal["title", "hypothesis", "finding", "limitation", "action_plan", "conclusion"]
     title: str
     body_bullets: List[str] = Field(default_factory=list)
     metric_callout: Optional[str] = None
     speaker_notes: str = ""
+    chart: Optional[ChartSpec] = Field(
+        default=None, 
+        description="Optional chart to visualize the finding. Use only when numeric trends or comparisons are central to the insight."
+    )    
 
 
 class PresentationSpec(BaseModel):
@@ -102,3 +160,5 @@ class PresentationSpec(BaseModel):
     slides: List[SlideContent]
     critic_score: float
     analysis_mode: str
+
+

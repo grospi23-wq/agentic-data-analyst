@@ -33,12 +33,13 @@ def test_detect_outliers(sample_df):
         detect_outliers(sample_df, 'nonexistent')
 
 def test_get_full_profile(sample_df):
-    result = get_full_profile(sample_df)
-    
+    # skip_discrete_outliers=False ensures small numeric columns are profiled
+    result = get_full_profile(sample_df, skip_discrete_outliers=False)
+
     assert hasattr(result, 'outliers')
     assert hasattr(result, 'missing_data')
     assert hasattr(result, 'correlations')
-    
+
     assert result.missing_data.total_missing > 0
     assert 'mostly_missing' in result.missing_data.critical_columns
     assert len(result.outliers) > 0

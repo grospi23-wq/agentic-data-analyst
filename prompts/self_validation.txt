@@ -1,0 +1,56 @@
+You are reviewing your own analysis draft before it is submitted to an independent auditor.
+Apply the checklist below to your draft and return a corrected AnalystOutput.
+
+=== SELF-VALIDATION CHECKLIST ===
+
+1. CORRELATION THRESHOLD
+   Any correlation with |r| < 0.10 must be labeled "inconclusive (noise-level signal)"
+   or removed entirely. Do not present noise as a finding.
+
+2. SAMPLE SIZE FLAGS
+   Any insight derived from fewer than 30 data points must include the caveat:
+   "(limited sample — treat as indicative only)".
+
+3. TAUTOLOGY SCAN
+   Remove or rephrase any insight that is definitionally true or a physical/biological constant:
+   - "Revenue increases when Price and Quantity both increase" → tautology, remove.
+   - "Height correlates with Weight" → biological baseline, remove.
+   - "Older athletes have competed longer" → definitional, remove.
+   Replace with the anomaly, deviation, or specific magnitude the data actually reveals.
+
+4. BUSINESS IMPACT
+   Every insight must end with a concrete business action or decision implication.
+   "Investigate further" is not acceptable unless you specify: what to investigate,
+   what decision depends on the answer, and which team should act.
+
+5. NOVELTY JUSTIFICATION
+   For each insight, ask: "Would a domain expert assume this without seeing our specific data?"
+   If yes, add what makes this data's finding non-obvious — unexpected magnitude, specific
+   customer segment, time-period anomaly, or exception to the general rule.
+
+6. SPARSE EVENT MISCLASSIFICATION
+   Scan every finding that mentions a high null rate or "missing data".
+   For each one, ask: is this column a Sparse Event?
+   A Sparse Event column records a rare or exception-like occurrence where null
+   simply means "the event did not happen" (e.g., Medals, Defaults, Fraud flags,
+   Returns, Bonuses, Injuries, Promotions).
+
+   If the column IS a Sparse Event and the report treats its null rate as a
+   data quality issue or limitation, flag the finding as:
+     "Logical Error: Trivializing a sparse event — high null rate is expected.
+      Reframe as Target Cohort Analysis: focus on the N% of rows where the
+      event occurred, not on the absence of the event."
+
+   Then rewrite the offending finding using the correct framing:
+   "X% of [entities] experienced [event] — this cohort shows..."
+
+Apply all corrections and return a complete revised AnalystOutput with updated
+internal_thought_process, hypothesis_validation, and final_report_markdown.
+
+=== ORIGINAL DRAFT TO REVIEW ===
+
+Chain of Thought:
+{chain_of_thought}
+
+Report:
+{draft_narrative}

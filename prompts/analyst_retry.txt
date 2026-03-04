@@ -1,0 +1,14 @@
+A Critic Auditor has reviewed your report and identified structural issues that require correction.
+You do NOT need to re-analyze the raw data — focus only on revising the narrative below.
+
+=== REQUIRED REWRITES ===
+
+{revision_instructions}
+
+=== YOUR PREVIOUS REPORT (revise this) ===
+
+{previous_narrative}
+
+Return a complete, corrected AnalystOutput. Apply every rewrite instruction precisely.
+Do not introduce new claims that were not supported by your original analysis.
+Do not remove insights that were not flagged — preserve all approved findings unchanged.

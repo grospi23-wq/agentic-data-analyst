@@ -1,13 +1,20 @@
+"""
+main.py
+-------
+Entry point for the Agentic Data Analyst. 
+Handles CLI arguments, environment initialization, and OS interactions.
+"""
+
 import asyncio
 import argparse
 import logging
-from pathlib import Path
+import platform
+import subprocess
 
 import logfire
 from dotenv import load_dotenv
 
-from missions import execute_analysis_mission, execute_multi_sheet_mission
-
+from service_layer import run_analysis_pipeline
 
 async def main() -> None:
     load_dotenv(override=True)
@@ -34,25 +41,34 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    is_csv = Path(args.file_path).suffix.lower() == ".csv"
+    # Delegate core logic to the Service Layer
+    result = await run_analysis_pipeline(args.file_path, target_sheet=args.sheet)
 
-    if args.sheet or is_csv:
-        sheet = args.sheet or Path(args.file_path).stem
-        result = await execute_analysis_mission(args.file_path, target_sheet=sheet)
-    else:
-        result = await execute_multi_sheet_mission(args.file_path)
-
+    # Handle UI/OS Output
     if result:
         score = result.get("critic_score", 0.0)
         pptx = result.get("pptx_path")
         print(f"\n{'═'*50}")
         print(f"Mission complete — Critic score: {score}/1.0")
+        
         if pptx:
-            print(f"Presentation: {pptx}")
+            print(f"Presentation saved: {pptx}")
+            try:
+                print("🚀 Opening presentation in Windows...")
+                if "microsoft" in platform.uname().release.lower():
+                    # WSL environment
+                    windows_friendly_path = pptx.replace('/', '\\')
+                    subprocess.run(["explorer.exe", windows_friendly_path])
+                elif platform.system() == "Windows":
+                    # Native Windows
+                    import os
+                    os.startfile(pptx)
+            except Exception as e:
+                print(f"⚠️ Could not auto-open presentation: {e}")
+                
         print(f"{'═'*50}")
     else:
         print("\n❌ Mission failed. Check logs for details.")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

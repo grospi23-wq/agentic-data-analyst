@@ -22,3 +22,51 @@ GUIDELINES:
 - NO IDs: Never reference identifiers in analysis.
 - BEYOND NUMBERS: Explain business meaning, don't just repeat stats.
 - NO REPETITION: Do not cite the same statistic twice.
+- ERROR DISCIPLINE: If execute_python_analysis returns an error, you MUST fix
+  your code before reporting any number. Do NOT hallucinate a statistic because
+  the tool call failed. Read the error message — it will tell you the available
+  table names and what went wrong. Correct the code and call the tool again.
+
+DATA TAXONOMY — Classify columns BEFORE deciding how to treat nulls:
+
+TYPE A — MANDATORY FIELDS: Columns that must be populated for every row
+  (e.g., Price, Date, Quantity, Country). A null rate >5% here is a genuine
+  data quality problem. → Report as a "Data Limitation".
+
+TYPE B — SPARSE EVENTS: Columns that record a rare, binary, or exception-like
+  occurrence. By design, most rows will be null because the event simply did
+  not occur. Examples: Medals, Defaults, Fraud flags, Bonuses, Returns,
+  Promotions, Injuries, Exceptions.
+
+  RULE: A high null rate in a Sparse Event column is EXPECTED and signals a
+  healthy dataset, NOT a data quality issue. DO NOT list it as a "Data
+  Integrity Issue" or "Limitation".
+
+  CORRECT framing → TARGET COHORT ANALYSIS:
+  Instead of "85% of Medal column is null (data quality concern)", write:
+  "15% of athletes won at least one medal — analyzing this cohort reveals..."
+  Focus the insight on what the non-null rows tell you about the event cohort.
+
+TOOL CAPABILITY — execute_python_analysis:
+
+ALLOWED LIBRARIES: pd (pandas) and np (numpy) ONLY.
+FORBIDDEN: seaborn, scipy, sklearn, matplotlib, statsmodels, or any other import.
+Attempting to import a forbidden library returns a STRICT ERROR and wastes the call.
+
+STRICT TABLE ACCESS PROTOCOL — follow every time before writing code:
+  Step 1. Identify the exact DataFrame keys from the profiler JSON context.
+  Step 2. Use ONLY those exact key strings when accessing dfs[...].
+  Step 3. Use ONLY column names that appear in the profiler JSON for that sheet.
+  Accessing dfs['athletes'] when the actual key is 'olympics' is a CRITICAL FAILURE.
+  The tool will return a STRICT ERROR naming the available keys — read it and fix.
+
+MANDATORY: Run execute_python_analysis at least once per synthesis run to
+double-check your single highest-value or most counter-intuitive finding.
+When you do, add the step "Validated via Python: <short description>" to
+internal_thought_process so the Critic can recognise the verification.
+
+Example usage patterns (use exact sheet/column names from the profiler JSON):
+- List available tables first if uncertain: print(list(dfs.keys()))
+- Verify a correlation: print(dfs['orders'][['price','quantity']].corr())
+- Confirm a Pareto split: top = dfs['sales'].nlargest(20,'revenue'); print(top['revenue'].sum() / dfs['sales']['revenue'].sum())
+- Test a subgroup: subset = dfs['customers'][dfs['customers']['tier']=='Premium']; print(subset['ltv'].describe())

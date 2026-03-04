@@ -6,3 +6,11 @@ RULES:
 2. Metric vs Identifier check: Suffixes *_id, *_key, *_code are ID-LIKE.
 3. ID-LIKE: MUST be in excluded_from_profiling. Never for stats/corr.
 4. Outliers: Request ONLY for numeric_continuous columns.
+5. DOMAIN DISCOVERY — classify the dataset into ONE of: RETAIL, FINANCE, SPORTS, HEALTHCARE, LOGISTICS, GENERAL.
+   - RETAIL: columns like price, quantity, discount, category, product, order, customer, revenue, sales.
+   - FINANCE: columns like amount, balance, transaction, account, portfolio, payment, interest, risk.
+   - SPORTS: columns like player, team, match, score, goal, season, league, position, stat.
+   - HEALTHCARE: columns like patient, diagnosis, treatment, medication, encounter, provider, claim.
+   - LOGISTICS: columns like shipment, carrier, route, delivery, warehouse, freight, tracking, transit.
+   - GENERAL: when domain signals are ambiguous or mixed.
+   - Set specialist_type to the best match. This drives analyst specialization in the synthesis phase.

@@ -1,173 +1,243 @@
-from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
-from pathlib import Path
+"""
+pptx_renderer.py
+----------------
+Bulletproof Executive PPTX Renderer for Agentic Data Analyst.
+Final Version: Integrated Auto-Scaling and Overflow Protection.
+"""
 
-# Need to import the Pydantic models to use as type hints
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+from pptx.enum.shapes import MSO_SHAPE
+from pathlib import Path
+from typing import Optional
+
 from schema import PresentationSpec, SlideContent
 
-THEME = {
-    "bg": RGBColor(0x0D, 0x1B, 0x2A),
-    "accent": RGBColor(0x00, 0xB4, 0xD8),
-    "text": RGBColor(0xFF, 0xFF, 0xFF),
-    "subtext": RGBColor(0xB0, 0xC4, 0xDE),
-    "warn": RGBColor(0xFF, 0xA5, 0x00),
-    "good": RGBColor(0x00, 0xFF, 0x00),
-    "bad": RGBColor(0xFF, 0x00, 0x00)
+# --- High-End Executive Palette ---
+COLORS = {
+    "BG": RGBColor(0x0A, 0x19, 0x2F),         
+    "ACCENT": RGBColor(0x64, 0xFF, 0xDA),     
+    "TEXT_MAIN": RGBColor(0xCC, 0xD6, 0xF6),  
+    "TEXT_BOLD": RGBColor(0xFF, 0xFF, 0xFF),  
+    "BOX_BG": RGBColor(0x11, 0x22, 0x40),     
+    "GREEN": RGBColor(0x10, 0xB9, 0x81),      
+    "RED": RGBColor(0xF4, 0x3F, 0x5E),        
+    "GRAY": RGBColor(0x4B, 0x55, 0x63)        
 }
 
-def _add_slide(prs: Presentation, layout_index: int) -> any:
-    layout = prs.slide_layouts[layout_index]
-    return prs.slides.add_slide(layout)
+W = Inches(13.33)
+H = Inches(7.5)
 
-def _style_textframe(tf, color: RGBColor, size_pt: int, bold: bool = False, align=PP_ALIGN.LEFT):
-    for para in tf.paragraphs:
-        para.alignment = align
-        for run in para.runs:
-            run.font.color.rgb = color
-            run.font.size = Pt(size_pt)
+def _set_dark_bg(slide):
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = COLORS["BG"]
+
+def _apply_text_style(tf, size: int, color: RGBColor, bold: bool = False, align=PP_ALIGN.LEFT, auto_size=False):
+    """Systematic font application with overflow protection."""
+    if auto_size:
+        tf.word_wrap = True
+    
+    for paragraph in tf.paragraphs:
+        paragraph.alignment = align
+        for run in paragraph.runs:
+            run.font.name = "Segoe UI"
+            run.font.size = Pt(size)
             run.font.bold = bold
+            run.font.color.rgb = color
 
-def _render_title_slide(slide, spec: SlideContent, full_spec: PresentationSpec, prs: Presentation):
-    title_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(11.33), Inches(1.5))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = full_spec.deck_title
-    _style_textframe(tf, THEME["accent"], 44, bold=True, align=PP_ALIGN.CENTER)
+def _add_executive_footer(slide, page_num: int):
+    tag_box = slide.shapes.add_textbox(Inches(0.5), H - Inches(0.5), Inches(4), Inches(0.3))
+    tag_box.text_frame.text = "STRATEGIC ANALYSIS | CONFIDENTIAL"
+    _apply_text_style(tag_box.text_frame, 10, COLORS["GRAY"])
+    
+    num_box = slide.shapes.add_textbox(W - Inches(1.5), H - Inches(0.5), Inches(1), Inches(0.3))
+    num_box.text_frame.text = f"PAGE {page_num}"
+    _apply_text_style(num_box.text_frame, 10, COLORS["GRAY"], align=PP_ALIGN.RIGHT)
 
-    sub_box = slide.shapes.add_textbox(Inches(1), Inches(4), Inches(11.33), Inches(1))
-    tf_sub = sub_box.text_frame
-    p_sub = tf_sub.paragraphs[0]
-    p_sub.text = full_spec.subtitle
-    _style_textframe(tf_sub, THEME["subtext"], 24, align=PP_ALIGN.CENTER)
+def _add_accent_header(slide, title_text: str, color: Optional[RGBColor] = None):
+    accent_color = color if color else COLORS["ACCENT"]
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, W, Inches(0.06))
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = accent_color
+    bar.line.fill.background()
+    
+    # Title Protection Logic: Dynamic font size based on length
+    font_size = 34
+    if len(title_text) > 40: font_size = 28
+    if len(title_text) > 60: font_size = 24
 
-def _render_hypothesis_slide(slide, spec: SlideContent):
-    title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12), Inches(1))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = "Hypothesis & Verdict"
-    _style_textframe(tf, THEME["accent"], 32, bold=True)
-
-    body_box = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(12), Inches(4))
-    tf_b = body_box.text_frame
-    tf_b.word_wrap = True
-    p_b = tf_b.paragraphs[0]
-    p_b.text = spec.title # Assuming title contains the verdict text
-    _style_textframe(tf_b, THEME["text"], 20)
-
-def _render_finding_slide(slide, spec: SlideContent):
-    # Title bar (left accent stripe)
-    accent_bar = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        Inches(0), Inches(0), Inches(0.12), Inches(7.5)
-    )
-    accent_bar.fill.solid()
-    accent_bar.fill.fore_color.rgb = THEME["accent"]
-    accent_bar.line.fill.background()
-
-    # Slide title
-    title_box = slide.shapes.add_textbox(Inches(0.3), Inches(0.3), Inches(9), Inches(0.9))
+    title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), W - Inches(1.5), Inches(1))
     tf = title_box.text_frame
     tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = spec.title
-    p.runs[0].font.color.rgb = THEME["accent"]
-    p.runs[0].font.size = Pt(24)
-    p.runs[0].font.bold = True
+    tf.text = title_text
+    _apply_text_style(tf, font_size, COLORS["TEXT_BOLD"], bold=True)
 
-    # Metric callout (right side, large)
-    if spec.metric_callout:
-        callout = slide.shapes.add_textbox(Inches(10), Inches(1.5), Inches(3), Inches(2))
-        tf_c = callout.text_frame
-        tf_c.word_wrap = True
-        p_c = tf_c.paragraphs[0]
-        p_c.text = spec.metric_callout
-        p_c.alignment = PP_ALIGN.CENTER
-        p_c.runs[0].font.color.rgb = THEME["accent"]
-        p_c.runs[0].font.size = Pt(36)
-        p_c.runs[0].font.bold = True
+def _add_native_chart(slide, chart_spec, x, y, cx, cy):
+    """Injects a native, editable PowerPoint chart customized for the dark theme."""
+    chart_data = CategoryChartData()
+    chart_data.categories = [dp.label for dp in chart_spec.data_points]
+    chart_data.add_series(chart_spec.title, [dp.value for dp in chart_spec.data_points])
 
-    # Bullet body
-    body_box = slide.shapes.add_textbox(Inches(0.3), Inches(1.4), Inches(9.5), Inches(5.5))
-    tf_b = body_box.text_frame
-    tf_b.word_wrap = True
-    for i, bullet in enumerate(spec.body_bullets):
-        p_b = tf_b.paragraphs[0] if i == 0 else tf_b.add_paragraph()
-        p_b.text = f"• {bullet}"
-        p_b.runs[0].font.color.rgb = THEME["subtext"]
-        p_b.runs[0].font.size = Pt(16)
-        p_b.space_after = Pt(8)
+    chart_type_map = {
+        "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+        "line": XL_CHART_TYPE.LINE,
+        "pie": XL_CHART_TYPE.PIE
+    }
+    xl_chart_type = chart_type_map.get(chart_spec.chart_type, XL_CHART_TYPE.COLUMN_CLUSTERED)
 
-def _render_limitation_slide(slide, spec: SlideContent):
-    title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12), Inches(1))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = "⚠️ Data Limitations"
-    _style_textframe(tf, THEME["warn"], 32, bold=True)
+    graphic_frame = slide.shapes.add_chart(
+        xl_chart_type, x, y, cx, cy, chart_data
+    )
+    chart = graphic_frame.chart
 
-    body_box = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(12), Inches(4))
-    tf_b = body_box.text_frame
-    tf_b.word_wrap = True
-    for i, bullet in enumerate(spec.body_bullets):
-        p_b = tf_b.paragraphs[0] if i == 0 else tf_b.add_paragraph()
-        p_b.text = f"• {bullet}"
-        p_b.runs[0].font.color.rgb = THEME["text"]
-        p_b.runs[0].font.size = Pt(18)
-        p_b.space_after = Pt(12)
+    # Dark theme styling for the chart text
+    chart.font.color.rgb = COLORS["TEXT_MAIN"]
+    if chart.has_legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        chart.legend.font.color.rgb = COLORS["TEXT_MAIN"]
+        
+    return chart    
 
-def _render_conclusion_slide(slide, spec: SlideContent, critic_score: float):
-    title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12), Inches(1))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = "Conclusion"
-    _style_textframe(tf, THEME["accent"], 32, bold=True)
+def _render_title_slide(prs, spec: PresentationSpec):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _set_dark_bg(slide)
     
-    body_box = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(8), Inches(4))
-    tf_b = body_box.text_frame
-    tf_b.word_wrap = True
-    p_b = tf_b.paragraphs[0]
-    p_b.text = spec.title
-    _style_textframe(tf_b, THEME["text"], 20)
+    # Cinematic line
+    line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, W/2 - Inches(1), H/2 - Inches(1.5), Inches(2), Inches(0.04))
+    line.fill.solid()
+    line.fill.fore_color.rgb = COLORS["ACCENT"]
+    line.line.fill.background()
+    
+    # Title Scaling for long titles
+    main_title = spec.deck_title.upper()
+    title_font_size = 52
+    if len(main_title) > 30: title_font_size = 42
+    if len(main_title) > 50: title_font_size = 32
 
-    # Score Box
-    score_color = THEME["good"] if critic_score >= 0.8 else THEME["warn"]
-    score_box = slide.shapes.add_textbox(Inches(9), Inches(2), Inches(3), Inches(2))
-    tf_s = score_box.text_frame
-    p_s = tf_s.paragraphs[0]
-    p_s.text = f"Reliability Score\n{critic_score:.2f}/1.0"
-    _style_textframe(tf_s, score_color, 24, bold=True, align=PP_ALIGN.CENTER)
+    title_box = slide.shapes.add_textbox(Inches(0.5), H/2 - Inches(1), W - Inches(1), Inches(2))
+    tf = title_box.text_frame
+    tf.text = main_title
+    _apply_text_style(tf, title_font_size, COLORS["ACCENT"], bold=True, align=PP_ALIGN.CENTER, auto_size=True)
+    
+    sub_box = slide.shapes.add_textbox(Inches(1), H/2 + Inches(1.2), W - Inches(2), Inches(0.8))
+    tf_sub = sub_box.text_frame
+    tf_sub.text = f"{spec.subtitle} | EXECUTIVE SUMMARY"
+    _apply_text_style(tf_sub, 20, COLORS["TEXT_MAIN"], align=PP_ALIGN.CENTER, auto_size=True)
+
+def _render_finding_slide(slide, slide_spec: SlideContent, page_num: int):
+    _set_dark_bg(slide)
+    _add_accent_header(slide, slide_spec.title)
+    _add_executive_footer(slide, page_num)
+    
+    # Check if a chart was generated
+    has_chart = getattr(slide_spec, "chart", None) is not None
+    
+    if slide_spec.metric_callout:
+        # Dynamic placement: shorter and higher if a chart is sharing the right side
+        box_y = Inches(1.2) if has_chart else Inches(1.5)
+        box_h = Inches(1.5) if has_chart else Inches(2.2)
+        
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, W - Inches(4.2), box_y, Inches(3.8), box_h)
+        box.fill.solid()
+        box.fill.fore_color.rgb = COLORS["BOX_BG"]
+        box.line.color.rgb = COLORS["ACCENT"]
+        box.line.width = Pt(1.5)
+        
+        tf = box.text_frame
+        tf.word_wrap = True
+        tf.text = slide_spec.metric_callout
+        # Callout Font Scaling
+        c_font_size = 32
+        if len(slide_spec.metric_callout) > 30: c_font_size = 24
+        if len(slide_spec.metric_callout) > 50: c_font_size = 18
+        
+        _apply_text_style(tf, c_font_size, COLORS["ACCENT"], bold=True, align=PP_ALIGN.CENTER)
+
+    if has_chart:
+        # Dynamic placement: below the callout, or taking the full right space
+        chart_y = Inches(2.9) if slide_spec.metric_callout else Inches(1.5)
+        chart_h = Inches(3.8) if slide_spec.metric_callout else Inches(5.0)
+        _add_native_chart(
+            slide, 
+            slide_spec.chart, 
+            x=W - Inches(4.5), 
+            y=chart_y, 
+            cx=Inches(4.2), 
+            cy=chart_h
+        )
+
+    # Core Body with wrap protection (Left side)
+    body_box = slide.shapes.add_textbox(Inches(0.6), Inches(1.6), Inches(8.0), Inches(5.2))
+    tf = body_box.text_frame
+    tf.word_wrap = True
+    
+    for i, bullet in enumerate(slide_spec.body_bullets):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = f"•  {bullet}"
+        p.space_before = Pt(14)
+        _apply_text_style(tf, 18, COLORS["TEXT_MAIN"])
+
+def _render_action_plan(slide, slide_spec: SlideContent, page_num: int):
+    _set_dark_bg(slide)
+    _add_accent_header(slide, "STRATEGIC EXECUTION ROADMAP")
+    _add_executive_footer(slide, page_num)
+    
+    for i, action in enumerate(slide_spec.body_bullets[:4]):
+        top_offset = Inches(1.6 + (i * 1.35))
+        circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.6), top_offset + Inches(0.1), Inches(0.6), Inches(0.6))
+        circle.fill.solid()
+        circle.fill.fore_color.rgb = COLORS["ACCENT"]
+        circle.line.fill.background()
+        
+        c_tf = circle.text_frame
+        c_tf.text = str(i + 1)
+        _apply_text_style(c_tf, 18, COLORS["BG"], bold=True, align=PP_ALIGN.CENTER)
+        
+        bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.4), top_offset, Inches(11.4), Inches(0.9))
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = COLORS["BOX_BG"]
+        bar.line.color.rgb = COLORS["GRAY"]
+        
+        b_tf = bar.text_frame
+        b_tf.word_wrap = True
+        b_tf.text = action
+        # Scaling for long action items
+        a_font_size = 18
+        if len(action) > 100: a_font_size = 14
+        _apply_text_style(b_tf, a_font_size, COLORS["TEXT_BOLD"], bold=True)
 
 def render_pptx(spec: PresentationSpec, output_path: str) -> Path:
     prs = Presentation()
-    prs.slide_width = Inches(13.33)   # 16:9 widescreen
-    prs.slide_height = Inches(7.5)
-
-    LAYOUT_BLANK = 6  # Blank layout gives us full control
-
-    for slide_spec in spec.slides:
-        slide = _add_slide(prs, LAYOUT_BLANK)
-
-        # --- Background fill ---
-        fill = slide.background.fill
-        fill.solid()
-        fill.fore_color.rgb = THEME["bg"]
-
+    prs.slide_width, prs.slide_height = W, H
+    for i, slide_spec in enumerate(spec.slides):
+        page_idx = i + 1
         if slide_spec.slide_type == "title":
-            _render_title_slide(slide, slide_spec, spec, prs)
-        elif slide_spec.slide_type == "hypothesis":
-            _render_hypothesis_slide(slide, slide_spec)
-        elif slide_spec.slide_type == "finding":
-            _render_finding_slide(slide, slide_spec)
-        elif slide_spec.slide_type == "limitation":
-            _render_limitation_slide(slide, slide_spec)
-        elif slide_spec.slide_type == "conclusion":
-            _render_conclusion_slide(slide, slide_spec, spec.critic_score)
+            _render_title_slide(prs, spec)
+        elif slide_spec.slide_type == "action_plan":
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            _render_action_plan(slide, slide_spec, page_idx)
+        else:
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            header_color = None
+            if slide_spec.slide_type == "hypothesis":
+                v = spec.hypothesis_verdict.upper()
+                if "REJECTED" in v: header_color = COLORS["RED"]
+                elif "CONFIRMED" in v: header_color = COLORS["GREEN"]
+            
+            _set_dark_bg(slide)
+            _add_accent_header(slide, slide_spec.title, color=header_color)
+            _render_finding_slide(slide, slide_spec, page_idx)
 
-        # Speaker notes
         if slide_spec.speaker_notes:
-            slide.notes_slide.notes_text_frame.text = slide_spec.speaker_notes
+            notes_slide = prs.slides[-1].notes_slide
+            if notes_slide and notes_slide.notes_text_frame:
+                notes_slide.notes_text_frame.text = slide_spec.speaker_notes
 
-    out = Path(output_path)
-    prs.save(out)
-    return out
+    final_path = Path(output_path)
+    prs.save(str(final_path))
+    return final_path
