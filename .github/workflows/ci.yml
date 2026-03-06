@@ -16,8 +16,6 @@ jobs:
     env:
       OPENROUTER_API_KEY: "dummy-key-for-ci"
       LOGFIRE_TOKEN: "dummy-token-for-ci"
-      # GitHub provides the exact absolute paths dynamically
-      PYTHONPATH: "${{ github.workspace }}:${{ github.workspace }}/lib"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,5 +30,8 @@ jobs:
         run: uv sync
 
       - name: Run tests
-        # Bypassing 'uv run' to force Python to respect the PYTHONPATH
-        run: .venv/bin/python -m pytest -v
+        run: |
+          echo "import sys, os" > conftest.py
+          echo "sys.path.insert(0, os.path.abspath('.'))" >> conftest.py
+          echo "sys.path.insert(0, os.path.abspath('./lib'))" >> conftest.py
+          .venv/bin/python -m pytest -v
