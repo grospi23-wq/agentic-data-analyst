@@ -10,8 +10,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      OPENROUTER_API_KEY: "dummy-key-for-ci"
-      LOGFIRE_TOKEN: "dummy-token-for-ci"
+      OPENROUTER_API_KEY: "dummy-key"
+      LOGFIRE_TOKEN: "dummy-token"
+      PYTHONPATH: ".:lib"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +26,5 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run tests (Nuclear Path Fix)
-        run: |
-          touch lib/__init__.py
-          PYTHONPATH="${PWD}:${PWD}/lib" .venv/bin/python -m pytest -v
+      - name: Run tests
+        run: uv run pytest -v
