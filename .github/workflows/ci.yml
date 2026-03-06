@@ -16,7 +16,7 @@ jobs:
     env:
       OPENROUTER_API_KEY: "dummy-key-for-ci"
       LOGFIRE_TOKEN: "dummy-token-for-ci"
-      # Using GitHub workspace variables to enforce absolute paths
+      # GitHub provides the exact absolute paths dynamically
       PYTHONPATH: "${{ github.workspace }}:${{ github.workspace }}/lib"
     steps:
       - name: Checkout code
@@ -32,4 +32,5 @@ jobs:
         run: uv sync
 
       - name: Run tests
-        run: uv run pytest -v
+        # Bypassing 'uv run' to force Python to respect the PYTHONPATH
+        run: .venv/bin/python -m pytest -v
