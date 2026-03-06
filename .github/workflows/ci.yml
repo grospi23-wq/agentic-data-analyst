@@ -2,13 +2,9 @@ name: CI
 
 on:
   push:
-    branches:
-      - master
-      - main
+    branches: [ master, main ]
   pull_request:
-    branches:
-      - master
-      - main
+    branches: [ master, main ]
 
 jobs:
   test:
@@ -29,9 +25,7 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run tests
+      - name: Run tests (Nuclear Path Fix)
         run: |
-          echo "import sys, os" > conftest.py
-          echo "sys.path.insert(0, os.path.abspath('.'))" >> conftest.py
-          echo "sys.path.insert(0, os.path.abspath('./lib'))" >> conftest.py
-          .venv/bin/python -m pytest -v
+          touch lib/__init__.py
+          PYTHONPATH="${PWD}:${PWD}/lib" .venv/bin/python -m pytest -v
