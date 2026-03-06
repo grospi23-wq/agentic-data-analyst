@@ -16,7 +16,8 @@ jobs:
     env:
       OPENROUTER_API_KEY: "dummy-key-for-ci"
       LOGFIRE_TOKEN: "dummy-token-for-ci"
-      PYTHONPATH: ".:./lib"
+      # Using GitHub workspace variables to enforce absolute paths
+      PYTHONPATH: "${{ github.workspace }}:${{ github.workspace }}/lib"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
