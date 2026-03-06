@@ -85,6 +85,22 @@ class CriticReport(BaseModel):
         return self
 
 
+class ChartDataPoint(BaseModel):
+    label: str = Field(..., description="The category or x-axis label (e.g., 'Bikes', '2023').")
+    value: float = Field(..., description="The numerical value for this point.")
+
+class ChartSpec(BaseModel):
+    """Specification for a deterministic, non-hallucinated chart."""
+    chart_type: Literal["bar", "line", "pie"]
+    title: str = Field(..., description="A short, descriptive title for the chart.")
+    x_label: Optional[str] = Field(default=None, description="Label for the X axis (if applicable).")
+    y_label: Optional[str] = Field(default=None, description="Label for the Y axis (if applicable).")
+    data_points: List[ChartDataPoint] = Field(
+        ..., 
+        max_length=7, 
+        description="Limit to max 7 data points for visual clarity on the slide."
+    )
+
 class AnalystOutput(BaseModel):
     internal_thought_process: List[str] = Field(
         ..., description="Step-by-step reasoning and mathematical checks."
@@ -94,6 +110,10 @@ class AnalystOutput(BaseModel):
     )
     final_report_markdown: str = Field(
         ..., description="The final business-centric report."
+    )
+    charts: List[ChartSpec] = Field(
+        default_factory=list, 
+        description="Structured charts generated directly by the analyst."
     )
 
 
@@ -124,22 +144,6 @@ class MultiSheetStrategy(BaseModel):
     reasoning: str
     specialist_type: SpecialistType = SpecialistType.GENERAL
 
-
-class ChartDataPoint(BaseModel):
-    label: str = Field(..., description="The category or x-axis label (e.g., 'Bikes', '2023').")
-    value: float = Field(..., description="The numerical value for this point.")
-
-class ChartSpec(BaseModel):
-    """Specification for a deterministic, non-hallucinated chart."""
-    chart_type: Literal["bar", "line", "pie"]
-    title: str = Field(..., description="A short, descriptive title for the chart.")
-    x_label: Optional[str] = Field(default=None, description="Label for the X axis (if applicable).")
-    y_label: Optional[str] = Field(default=None, description="Label for the Y axis (if applicable).")
-    data_points: List[ChartDataPoint] = Field(
-        ..., 
-        max_length=7, 
-        description="Limit to max 7 data points for visual clarity on the slide."
-    )
 
 class SlideContent(BaseModel):
     slide_type: Literal["title", "hypothesis", "finding", "limitation", "action_plan", "conclusion"]

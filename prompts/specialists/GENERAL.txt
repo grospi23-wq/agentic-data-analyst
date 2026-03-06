@@ -62,3 +62,10 @@ C. PARADOX DETECTION — Counter-Intuitive Findings:
      smaller catalogue → higher revenue per SKU.
    - A paradox without a plausible explanation is still worth flagging — it signals a data quality issue
      or an under-explored segment.
+
+VISUALIZATION MANDATE (Structured Charts):
+- Identify at least 3 high-impact numeric findings and generate a ChartSpec for each.
+- Populate the charts list field in AnalystOutput.
+- CRITICAL: DO NOT write chart data or categories inside the final_report_markdown text.
+- Use execute_python_analysis to extract exact categories and values.
+- Mandatory: If Python was used to validate a finding, that finding MUST have a corresponding ChartSpec.

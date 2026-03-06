@@ -145,7 +145,7 @@ class TestClassifyColumn:
 def _make_sheet(name: str, cols: list[tuple[str, str]]) -> SheetMetadata:
     """Helper: build a SheetMetadata with specified (col_name, category) pairs."""
     columns = [
-        ColumnMetadata(name=col_name, dtype="object", category=cat, sample_values=[])
+        ColumnMetadata(name=col_name, dtype="object", category=cat, sample_values=[])    # pyright: ignore[reportArgumentType]
         for col_name, cat in cols
     ]
     return SheetMetadata(name=name, columns=columns, row_count=10)
@@ -452,7 +452,7 @@ class TestGetSemanticSample:
 
     def test_invalid_input_raises(self):
         with pytest.raises(AttributeError):
-            get_semantic_sample([1, 2, 3])
+            get_semantic_sample([1, 2, 3])  # pyright: ignore[reportArgumentType]
 
 
 # ---------------------------------------------------------------------------

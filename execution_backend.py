@@ -11,7 +11,7 @@ import asyncio
 import contextlib
 import io
 import re
-from typing import Protocol, Dict, Any, Tuple
+from typing import Protocol, Dict, Any
 
 class CodeExecutionBackend(Protocol):
     """Protocol defining the contract for any code execution engine."""

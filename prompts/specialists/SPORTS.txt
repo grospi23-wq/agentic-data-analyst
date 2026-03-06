@@ -67,3 +67,10 @@ E. SPORTS-SPECIFIC: Positional & Tactical Efficiency:
    - Compare performance metrics across positions or tactical formations.
    - Identify the most and least efficient positions per unit of playing time or cost.
    - Flag positions where performance variance is highest (high risk, high reward roles).
+
+VISUALIZATION MANDATE (Structured Charts):
+- Identify at least 3 high-impact numeric findings and generate a ChartSpec for each.
+- Populate the charts list field in AnalystOutput.
+- CRITICAL: DO NOT write chart data or categories inside the final_report_markdown text.
+- Use execute_python_analysis to extract exact categories and values.
+- Mandatory: If Python was used to validate a finding, that finding MUST have a corresponding ChartSpec.

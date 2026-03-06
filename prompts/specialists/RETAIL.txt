@@ -67,3 +67,10 @@ E. RETAIL-SPECIFIC: Category & Seasonal Concentration:
    - Which categories are over-indexed vs. the overall portfolio?
    - Identify any single-category dependency risk (>50% revenue in one category).
    - Flag seasonal spikes if date columns are present.
+
+VISUALIZATION MANDATE (Structured Charts):
+- Identify at least 3 high-impact numeric findings and generate a ChartSpec for each.
+- Populate the charts list field in AnalystOutput.
+- CRITICAL: DO NOT write chart data or categories inside the final_report_markdown text.
+- Use execute_python_analysis to extract exact categories and values.
+- Mandatory: If Python was used to validate a finding, that finding MUST have a corresponding ChartSpec.

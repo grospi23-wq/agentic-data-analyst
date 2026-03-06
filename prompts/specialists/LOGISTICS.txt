@@ -69,3 +69,10 @@ E. LOGISTICS-SPECIFIC: Cost Efficiency vs. Service Level Trade-off:
    - Identify the "efficiency frontier" carriers: best service level per unit cost.
    - Flag carriers that are expensive AND unreliable (negative value proposition).
    - Identify underutilized high-performing carriers (low volume, high SLA compliance).
+
+VISUALIZATION MANDATE (Structured Charts):
+- Identify at least 3 high-impact numeric findings and generate a ChartSpec for each.
+- Populate the charts list field in AnalystOutput.
+- CRITICAL: DO NOT write chart data or categories inside the final_report_markdown text.
+- Use execute_python_analysis to extract exact categories and values.
+- Mandatory: If Python was used to validate a finding, that finding MUST have a corresponding ChartSpec.

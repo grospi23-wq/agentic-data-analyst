@@ -15,9 +15,12 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.0.0",
     "plotly>=6.5.2",
+    "psycopg2-binary>=2.9.11",
     "pydantic-ai>=1.59.0",
+    "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "python-pptx>=1.0.2",
+    "sqlalchemy>=2.0.48",
     "tabulate>=0.9.0",
 ]
 
@@ -31,3 +34,8 @@ dev = [
 filterwarnings = [
     "ignore::logfire._internal.config.LogfireNotConfiguredWarning",
 ]
+# Treat all async def functions as asyncio tests automatically
+asyncio_mode = "auto"
+
+# Set default scope for async fixtures to prevent warnings in newer versions
+asyncio_default_fixture_loop_scope = "function"

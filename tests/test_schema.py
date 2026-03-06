@@ -30,17 +30,20 @@ def _warn_finding() -> CriticalFinding:
         severity="warn",
     )
 
-
-def _make_report(**kwargs) -> CriticReport:
-    """Construct a CriticReport with defaults for unspecified fields."""
-    defaults = dict(
-        approved=True,
-        score=0.75,
-        findings=[],
-        revision_instructions=None,
+from typing import Any
+def _make_report(**kwargs: Any) -> CriticReport:
+    # We ensure 'approved' is treated as a bool to satisfy the schema
+    approved = bool(kwargs.get("approved", False))
+    score = float(kwargs.get("score", 0.0))
+    findings = kwargs.get("findings", [])
+    
+    return CriticReport(
+        approved=approved,
+        score=score,
+        findings=findings,
+        # pass the rest if they exist
+        **{k: v for k, v in kwargs.items() if k not in ["approved", "score", "findings"]}
     )
-    defaults.update(kwargs)
-    return CriticReport(**defaults)
 
 
 # ---------------------------------------------------------------------------

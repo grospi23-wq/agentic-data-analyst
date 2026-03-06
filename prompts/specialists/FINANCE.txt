@@ -66,3 +66,10 @@ E. FINANCE-SPECIFIC: Fee & Margin Efficiency:
    - Correlate fee rates with transaction volume and net revenue.
    - Identify fee structures where volume does not compensate for operational cost.
    - Flag inverted relationships: high-volume, low-fee segments subsidized by low-volume, high-fee ones.
+
+VISUALIZATION MANDATE (Structured Charts):
+- Identify at least 3 high-impact numeric findings and generate a ChartSpec for each.
+- Populate the charts list field in AnalystOutput.
+- CRITICAL: DO NOT write chart data or categories inside the final_report_markdown text.
+- Use execute_python_analysis to extract exact categories and values.
+- Mandatory: If Python was used to validate a finding, that finding MUST have a corresponding ChartSpec.

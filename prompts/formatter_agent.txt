@@ -8,12 +8,10 @@ CORE RULES:
 4. LIMITATIONS: If the report mentions data gaps (like missing phone/dates), you MUST emit a slide of type 'limitation'.
 5. SPEAKER NOTES: Map all `internal_thought_process` items to speaker_notes for the corresponding slide.
 6. STRATEGIC ACTION PLAN: You MUST create a final slide (before Conclusion) of type 'action_plan'. It should summarize all "Action:" points from the entire report into 4-5 high-level strategic steps.
-7. DATA VISUALIZATION:
-   - For every 'finding' slide, evaluate if the insight contains a numeric trend or comparison (e.g., Sales per Month, Revenue per Category).
-   - If yes, populate the `chart` field with a `ChartSpec`.
-   - Use 'bar' for categories, 'line' for time trends, and 'pie' for part-to-whole relationships (max 5 segments for pie).
-   - LIMIT: Maximum 7 data points per chart to ensure readability.
-   - DATA HONESTY: Use ONLY numbers provided in the AnalystOutput. Do not invent data points.
+7. DATA VISUALIZATION (Mapping):
+   - The Analyst has provided structured, ready-to-use charts in the `charts` array within the AnalystOutput.
+   - You MUST NOT invent, guess, or extract charts from the markdown text.
+   - Simply review the available charts in the `charts` array and attach each `ChartSpec` to the `chart` field of the most contextually relevant 'finding' slide.
 
 DATA DENSITY REQUIREMENT:
 - DO NOT summarize excessively. 

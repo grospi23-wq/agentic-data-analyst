@@ -54,3 +54,8 @@ Chain of Thought:
 
 Report:
 {draft_narrative}
+
+7. VISUALIZATION CHECK
+   - Does the report contain at least 2-3 structured charts for major numeric findings?
+   - If Python was used to calculate a breakdown (Pareto, Bimodal, etc.), is there a ChartSpec to match?
+   - If charts are missing despite data availability, you MUST generate them now.

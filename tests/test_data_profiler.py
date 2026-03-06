@@ -47,6 +47,6 @@ def test_get_full_profile(sample_df):
 def test_type_safety():
     invalid_input = "not a dataframe"
     with pytest.raises((TypeError, ValueError, AttributeError)):
-        detect_outliers(invalid_input, 'numeric1')
+        detect_outliers(invalid_input, 'numeric1')  # type: ignore
     with pytest.raises((TypeError, ValueError, AttributeError)):
-        get_full_profile(invalid_input)
+        get_full_profile(invalid_input)  # type: ignore

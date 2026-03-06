@@ -12,6 +12,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
+import logfire
 from pathlib import Path
 from typing import Optional
 
@@ -78,33 +79,41 @@ def _add_accent_header(slide, title_text: str, color: Optional[RGBColor] = None)
 
 def _add_native_chart(slide, chart_spec, x, y, cx, cy):
     """Injects a native, editable PowerPoint chart customized for the dark theme."""
-    chart_data = CategoryChartData()
-    chart_data.categories = [dp.label for dp in chart_spec.data_points]
-    chart_data.add_series(chart_spec.title, [dp.value for dp in chart_spec.data_points])
+    try:
+        chart_data = CategoryChartData()
+        points = [dp for dp in chart_spec.data_points[:7] if dp.value is not None]
+        if not points:
+            logfire.warn("Chart skipped — no valid data points for '{t}'", t=chart_spec.title)
+            return None
+        chart_data.categories = [dp.label for dp in points]
+        chart_data.add_series(chart_spec.title, [dp.value for dp in points])
 
-    chart_type_map = {
-        "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
-        "line": XL_CHART_TYPE.LINE,
-        "pie": XL_CHART_TYPE.PIE
-    }
-    xl_chart_type = chart_type_map.get(chart_spec.chart_type, XL_CHART_TYPE.COLUMN_CLUSTERED)
+        chart_type_map = {
+            "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+            "line": XL_CHART_TYPE.LINE,
+            "pie": XL_CHART_TYPE.PIE
+        }
+        xl_chart_type = chart_type_map.get(chart_spec.chart_type, XL_CHART_TYPE.COLUMN_CLUSTERED)
 
-    graphic_frame = slide.shapes.add_chart(
-        xl_chart_type, x, y, cx, cy, chart_data
-    )
-    chart = graphic_frame.chart
+        graphic_frame = slide.shapes.add_chart(
+            xl_chart_type, x, y, cx, cy, chart_data
+        )
+        chart = graphic_frame.chart
 
-    # Dark theme styling for the chart text
-    chart.font.color.rgb = COLORS["TEXT_MAIN"]
-    if chart.has_legend:
-        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-        chart.legend.include_in_layout = False
-        chart.legend.font.color.rgb = COLORS["TEXT_MAIN"]
-        
-    return chart    
+        # Dark theme styling for the chart text
+        chart.font.color.rgb = COLORS["TEXT_MAIN"]
+        if chart.has_legend:
+            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            chart.legend.include_in_layout = False
+            chart.legend.font.color.rgb = COLORS["TEXT_MAIN"]
 
-def _render_title_slide(prs, spec: PresentationSpec):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
+        return chart
+    except Exception as e:
+        logfire.error("Chart injection failed for '{t}': {err}", t=chart_spec.title, err=str(e))
+        return None
+
+def _populate_title_slide(slide, spec: PresentationSpec):
+    
     _set_dark_bg(slide)
     
     # Cinematic line
@@ -130,8 +139,7 @@ def _render_title_slide(prs, spec: PresentationSpec):
     _apply_text_style(tf_sub, 20, COLORS["TEXT_MAIN"], align=PP_ALIGN.CENTER, auto_size=True)
 
 def _render_finding_slide(slide, slide_spec: SlideContent, page_num: int):
-    _set_dark_bg(slide)
-    _add_accent_header(slide, slide_spec.title)
+
     _add_executive_footer(slide, page_num)
     
     # Check if a chart was generated
@@ -214,29 +222,40 @@ def _render_action_plan(slide, slide_spec: SlideContent, page_num: int):
 def render_pptx(spec: PresentationSpec, output_path: str) -> Path:
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
+
     for i, slide_spec in enumerate(spec.slides):
         page_idx = i + 1
-        if slide_spec.slide_type == "title":
-            _render_title_slide(prs, spec)
-        elif slide_spec.slide_type == "action_plan":
+        try:
             slide = prs.slides.add_slide(prs.slide_layouts[6])
-            _render_action_plan(slide, slide_spec, page_idx)
-        else:
-            slide = prs.slides.add_slide(prs.slide_layouts[6])
-            header_color = None
-            if slide_spec.slide_type == "hypothesis":
-                v = spec.hypothesis_verdict.upper()
-                if "REJECTED" in v: header_color = COLORS["RED"]
-                elif "CONFIRMED" in v: header_color = COLORS["GREEN"]
-            
-            _set_dark_bg(slide)
-            _add_accent_header(slide, slide_spec.title, color=header_color)
-            _render_finding_slide(slide, slide_spec, page_idx)
 
-        if slide_spec.speaker_notes:
-            notes_slide = prs.slides[-1].notes_slide
-            if notes_slide and notes_slide.notes_text_frame:
-                notes_slide.notes_text_frame.text = slide_spec.speaker_notes
+            if slide_spec.slide_type == "title":
+                _populate_title_slide(slide, spec)
+            elif slide_spec.slide_type == "action_plan":
+                _render_action_plan(slide, slide_spec, page_idx)
+            else:
+                # For Findings, Hypothesis, Limitations, etc.
+                header_color = None
+                if slide_spec.slide_type == "hypothesis":
+                    v = spec.hypothesis_verdict.upper()
+                    if "REJECTED" in v: header_color = COLORS["RED"]
+                    elif "CONFIRMED" in v: header_color = COLORS["GREEN"]
+
+                _set_dark_bg(slide)
+                _add_accent_header(slide, slide_spec.title, color=header_color)
+                _render_finding_slide(slide, slide_spec, page_idx)
+
+            # Handle speaker notes
+            if slide_spec.speaker_notes:
+                try:
+                    notes_slide = prs.slides[-1].notes_slide
+                    if notes_slide and notes_slide.notes_text_frame:
+                        notes_slide.notes_text_frame.text = slide_spec.speaker_notes
+                except Exception as e:
+                    logfire.warn("Speaker notes failed for slide {n}: {err}", n=page_idx, err=str(e))
+
+        except Exception as e:
+            logfire.error("Slide {n} render failed ({t}): {err}", n=page_idx, t=slide_spec.slide_type, err=str(e))
+            print(f"⚠️  Slide {page_idx} ({slide_spec.slide_type}) skipped due to render error: {e}")
 
     final_path = Path(output_path)
     prs.save(str(final_path))

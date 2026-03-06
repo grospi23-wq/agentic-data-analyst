@@ -98,7 +98,9 @@ def build_formatter_prompt(
     Constructs the prompt for the Formatter agent to generate the PresentationSpec.
     """
     return (
-        f"AnalystOutput:\n{report_json}\n\n"
+        f"AnalystOutput (JSON):\n{report_json}\n\n"
+        f"INSTRUCTION: Carefully map the 'charts' list from the AnalystOutput into the corresponding 'chart' field of the slides in PresentationSpec. "
+        f"If a chart in AnalystOutput relates to a finding, it MUST be included in that slide.\n\n"
         f"deck_title: {deck_title}\n"
         f"critic_score: {critic_score}\n"
         f"analysis_mode: {analysis_mode}\n"

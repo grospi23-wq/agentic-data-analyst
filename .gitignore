@@ -193,3 +193,5 @@ data/
 all_prompts.txt
 .claude/
 *Zone.Identifier
+.cursor/
+CLAUDE.md
