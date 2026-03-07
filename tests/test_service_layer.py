@@ -168,10 +168,12 @@ class TestRunAnalysisPipelineRouting:
         """A file over 50MB is rejected before any routing logic runs."""
         csv_file = tmp_path / "huge.csv"
         csv_file.write_text("x")
-
+    
+        # Create a Mock object that mimics a real OS stat result
         mock_stat = MagicMock()
         mock_stat.st_size = 100 * 1024 * 1024  # 100 MB
-
+        mock_stat.st_mode = 33188  # S_IFREG: Standard regular file mode
+    
         with patch.object(Path, "stat", return_value=mock_stat):
             with pytest.raises(ValueError, match="File too large"):
-                await run_analysis_pipeline(str(csv_file))
+               await run_analysis_pipeline(str(csv_file))
