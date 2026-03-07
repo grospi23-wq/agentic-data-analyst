@@ -1,5 +1,6 @@
 # 🧠 Agentic Data Analyst: Autonomous Relational Data Engine
 
+![CI](https://img.shields.io/github/actions/workflow/status/grospi23-wq/agentic-data-analyst/ci.yml?label=CI&style=flat)
 ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
 ![Pydantic-AI](https://img.shields.io/badge/Framework-Pydantic--AI-orange)
 ![Pandas](https://img.shields.io/badge/Data-Pandas-150458)
