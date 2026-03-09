@@ -91,6 +91,15 @@ python main.py data/churn.csv
 * **Data Engine:** Pandas, NumPy
 * **Presentation:** python-pptx
 
+## 📁 Project Structure
+Key modules:
+* **missions.py** — Orchestration layer for single-sheet, multi-sheet, and SQL analysis missions.
+* **lib/path_utils.py** — Universal path resolution (WSL/Windows).
+* **lib/data_discovery_lib.py** — Metadata/schema discovery for Excel, CSV, and SQL.
+* **lib/mission_utils.py** — UI and formatting utilities for missions (e.g. `format_rewrites`, `print_rejection_detail`).
+* **schema.py** — Pydantic models (e.g. `CriticReport`, `AnalystOutput`, `MultiSheetStrategy`).
+* **memory_manager.py** — Persistent memory and schema fingerprinting.
+
 ## 🧠 Engineering Lessons Learned
 1. From Notebooks to Production Architecture
 The project started as a series of exploratory Jupyter Notebooks. The key challenge was transitioning to a Modular Multi-Agent System. By refactoring logic into discrete services (like service_layer.py and memory_manager.py), we achieved a strict Separation of Concerns, making the system testable and scalable beyond a single script.

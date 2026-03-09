@@ -31,10 +31,10 @@ def resolve_file_path(path_input: str) -> Path:
     user = os.getenv("WSL_USER", getpass.getuser())
 
     candidates = [
-        Path.cwd() / path_obj,                          # Relative to where script is running
-        Path(__file__).parent.parent / path_obj,        # Relative to project root
-        Path(f"/mnt/c/Users/{user}/Downloads/{clean_path}"), # Your specific Windows Downloads
-        Path(f"/mnt/c/Users/{user}/Desktop/{clean_path}"),   # Your specific Windows Desktop
+        Path.cwd() / path_obj,                               # Relative to where script is running
+        Path(__file__).parent.parent / path_obj,             # Relative to project root
+        Path(f"/mnt/c/Users/{user}/Downloads/{clean_path}"), # WSL → Windows Downloads bridge
+        Path(f"/mnt/c/Users/{user}/Desktop/{clean_path}"),   # WSL → Windows Desktop bridge
     ]
 
     # 4. Check if file exists in any of these locations

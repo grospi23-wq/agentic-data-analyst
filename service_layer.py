@@ -5,10 +5,9 @@ Core application service with a Global File Resolver.
 Scans Project, WSL, and Windows (Desktop/Documents/Downloads) dynamically.
 """
 
-import os
+
 import pandas as pd
 import logfire
-import getpass
 from pathlib import Path
 from missions import (
     execute_analysis_mission, 
@@ -30,7 +29,6 @@ def _resolve_source_path(source: str) -> Path:
     Scans every possible landing zone for the file.
     Covers: Project Root, Data folders, WSL/Windows Desktop, Documents, and Downloads.
     """
-    linux_user = getpass.getuser()
     
     # 1. Base Project Paths
     search_dirs = [

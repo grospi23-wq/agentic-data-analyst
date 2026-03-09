@@ -1,16 +1,16 @@
 """
 test_missions_helpers.py
 ------------------------
-Tests for the pure helper functions in missions.py:
-  - _format_rewrites     — renders CriticReport revision payload as text
-  - _print_rejection_detail — prints structured rejection summary to stdout
-  - _load_specialist_prompt — loads domain-specific or GENERAL fallback prompt
+Tests for mission helpers:
+  - format_rewrites, print_rejection_detail (lib.mission_utils)
+  - _load_specialist_prompt (missions)
 """
 
 import pytest
 from unittest.mock import MagicMock, patch
 from schema import CriticReport, CriticalFinding, RevisionRewrite
-from missions import _format_rewrites, _print_rejection_detail, _load_specialist_prompt
+from lib.mission_utils import format_rewrites, print_rejection_detail
+from missions import _load_specialist_prompt
 from schema import SpecialistType
 
 
@@ -42,7 +42,7 @@ def _make_rewrite(insight_id="insight_1", issue_type="math_error", fix="Recalcul
 
 
 # ---------------------------------------------------------------------------
-# _format_rewrites
+# format_rewrites
 # ---------------------------------------------------------------------------
 
 class TestFormatRewrites:
@@ -51,7 +51,7 @@ class TestFormatRewrites:
         rw2 = _make_rewrite("insight_2", "hallucination", "Remove unsupported claim.")
         report = _make_critic_report(rewrites=[rw1, rw2])
 
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
 
         assert "[insight_1]" in result
         assert "(math_error)" in result
@@ -63,7 +63,7 @@ class TestFormatRewrites:
         rw2 = _make_rewrite("i2", "hallucination", "Fix B.")
         report = _make_critic_report(rewrites=[rw1, rw2])
 
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
         lines = result.strip().split("\n")
         assert len(lines) == 2
 
@@ -72,12 +72,12 @@ class TestFormatRewrites:
             rewrites=[],
             revision_instructions="Please revise insight 3.",
         )
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
         assert "Please revise insight 3." in result
 
     def test_fallback_default_message_when_both_empty(self):
         report = _make_critic_report(rewrites=[], revision_instructions=None)
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
         assert "Revise" in result or len(result) > 0
 
     def test_required_rewrites_take_precedence_over_revision_instructions(self):
@@ -86,20 +86,20 @@ class TestFormatRewrites:
             rewrites=[rw],
             revision_instructions="Generic fallback instruction.",
         )
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
         assert "Specific fix." in result
         assert "Generic fallback instruction." not in result
 
     def test_single_rewrite(self):
         rw = _make_rewrite("insight_5", "direction_error", "Reverse the trend statement.")
         report = _make_critic_report(rewrites=[rw])
-        result = _format_rewrites(report)
+        result = format_rewrites(report)
         assert "insight_5" in result
         assert "direction_error" in result
 
 
 # ---------------------------------------------------------------------------
-# _print_rejection_detail
+# print_rejection_detail
 # ---------------------------------------------------------------------------
 
 class TestPrintRejectionDetail:
@@ -122,7 +122,7 @@ class TestPrintRejectionDetail:
         report = self._make_report_with_rewrites(2)
         report.score = 0.35
         report.overall_value_score = 0.42
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         assert "0.35" in captured.out
@@ -130,14 +130,14 @@ class TestPrintRejectionDetail:
 
     def test_prints_attempt_info(self, capsys):
         report = self._make_report_with_rewrites(1)
-        _print_rejection_detail(report, attempt=2, max_attempts=4)
+        print_rejection_detail(report, attempt=2, max_attempts=4)
 
         captured = capsys.readouterr()
         assert "2/4" in captured.out
 
     def test_prints_rewrite_count(self, capsys):
         report = self._make_report_with_rewrites(3)
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         assert "3" in captured.out
@@ -147,7 +147,7 @@ class TestPrintRejectionDetail:
             0,
             structural_failures=["Math error in insight_1", "ID column used as metric"],
         )
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         assert "Math error" in captured.out
@@ -155,7 +155,7 @@ class TestPrintRejectionDetail:
 
     def test_caps_rewrites_at_three(self, capsys):
         report = self._make_report_with_rewrites(6)  # 6 rewrites
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         # Should show "… and 3 more"
@@ -163,14 +163,14 @@ class TestPrintRejectionDetail:
 
     def test_no_truncation_message_for_three_or_fewer(self, capsys):
         report = self._make_report_with_rewrites(3)
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         assert "more" not in captured.out
 
     def test_no_structural_failures_no_section_printed(self, capsys):
         report = self._make_report_with_rewrites(1, structural_failures=[])
-        _print_rejection_detail(report, attempt=1, max_attempts=3)
+        print_rejection_detail(report, attempt=1, max_attempts=3)
 
         captured = capsys.readouterr()
         assert "Structural failures" not in captured.out
