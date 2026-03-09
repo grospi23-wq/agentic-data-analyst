@@ -10,11 +10,12 @@ import asyncio
 import json
 import logfire
 import pandas as pd
+import sys
 from pathlib import Path
-from typing import Dict, List, cast
-
+from typing import Dict, List, cast, Tuple, Optional
 from generated_modules.data_profiler import ProfilerReport, get_full_profile
-from schema import SheetAnalysisPlan, SpecialistType, AnalystOutput, MultiSheetStrategy
+from schema import SheetAnalysisPlan, SpecialistType, AnalystOutput, MultiSheetStrategy, CriticReport
+from lib.ui_bridge import UIBridge 
 from agents import (
     AgentDeps,
     AnalystDeps,
@@ -35,10 +36,36 @@ from memory_schema import (
 from memory_manager import MemoryManager
 import prompt_builders as pb
 from lib.path_utils import resolve_file_path, resolve_sql_connection
-from lib.data_discovery_lib import run_dataset_discovery, run_sql_discovery
+from lib.data_discovery_lib import run_dataset_discovery, run_sql_discovery, GlobalDiscoveryMap
+from lib.mission_utils import format_rewrites, print_rejection_detail
 from sqlalchemy import text
 
 OUTPUT_DIR = Path("outputs")
+
+
+def _load_dataframes_from_file_sync(path: Path, sheet_names: List[str]) -> Dict[str, pd.DataFrame]:
+    """Load all sheets from file in one thread to avoid blocking the event loop."""
+    if path.suffix.lower() == ".xlsx":
+        return {n: pd.read_excel(path, sheet_name=n) for n in sheet_names}
+    # CSV: single virtual sheet
+    df = pd.read_csv(path)
+    return {sheet_names[0]: df} if sheet_names else {}
+
+
+def _load_dataframes_from_sql_sync(engine, table_names: List[str]) -> Dict[str, pd.DataFrame]:
+    """Load all tables from SQL in one thread to avoid blocking the event loop."""
+    preparer = engine.dialect.identifier_preparer
+    return {
+        n: pd.read_sql(text(f"SELECT * FROM {preparer.quote(n)}"), engine)
+        for n in table_names
+    }
+
+
+def _load_single_sheet_sync(path: Path, ext: str, sheet_name: str) -> pd.DataFrame:
+    """Load one CSV or Excel sheet in a thread."""
+    if ext == ".csv":
+        return pd.read_csv(path)
+    return pd.read_excel(path, sheet_name=sheet_name)
 
 
 # ---------------------------------------------------------------------------
@@ -72,47 +99,17 @@ async def _self_validate_report(report: AnalystOutput, analyst_deps: AnalystDeps
     return result.output
 
 
-def _print_rejection_detail(critic_report, attempt: int, max_attempts: int) -> None:
-    """Prints a structured summary of Critic rejections, including value scores and caps."""
-    n = len(critic_report.required_rewrites)
-    
-    # The test expects both Score and Value in this specific format
-    print(
-        f"  ⚠️  Revision Required (Attempt {attempt}/{max_attempts})"
-        f" — Score {critic_report.score:.2f}"
-        f", Value {critic_report.overall_value_score:.2f}"
-        f" — {n} rewrite(s)"
-    )
-
-    if critic_report.structural_failures:
-        print("  🔴  Structural failures:")
-        for failure in critic_report.structural_failures:
-            print(f"       • {failure}")
-
-    if critic_report.required_rewrites:
-        print("  🔧  Required rewrites:")
-        # Show only first 3 rewrites
-        for rw in critic_report.required_rewrites[:3]:
-            print(f"       [{rw.insight_id}] ({rw.issue_type}): {rw.fix_instruction}")
-        
-        # The test specifically expects this line if there are more than 3 rewrites
-        if n > 3:
-            print(f"       … and {n - 3} more (see Logfire for full list)")
-
-
-def _format_rewrites(critic_report) -> str:
-    """Converts structured Critic rewrites into a readable prompt string."""
-    if critic_report.required_rewrites:
-        lines = [
-            f"- [{rw.insight_id}] ({rw.issue_type}): {rw.fix_instruction}" 
-            for rw in critic_report.required_rewrites
-        ]
-        return "\n".join(lines)
-    
-    return critic_report.revision_instructions or "Revise the report to address the Critic's findings."
-
-
-def _display_mission_summary(mission_name, source_label, source_value, items_label, items_value, specialist, critic_report, pptx_path, narrative):
+def _display_mission_summary(
+    mission_name: str,
+    source_label: str,
+    source_value: str,
+    items_label: str,
+    items_value: str,
+    specialist: str,
+    critic_report: Optional[CriticReport],
+    pptx_path: Optional[str],
+    narrative: str
+) -> None:
     """Prints a final beautiful summary of the mission outcome."""
     _W = 64
     approved = bool(critic_report and critic_report.approved)
@@ -127,9 +124,13 @@ def _display_mission_summary(mission_name, source_label, source_value, items_lab
     print(f"  💾  PPTX       : {pptx_path or 'not generated'}")
     print(f"{'━' * _W}\n")
     print(f"📜  FINAL VALIDATED {mission_name.upper()} REPORT\n\n{narrative}\n\n{'━' * _W}\n")
+    sys.stdout.flush()
 
 
-async def _profile_sheet_async(df: pd.DataFrame, plan: SheetAnalysisPlan) -> tuple[str, ProfilerReport]:
+async def _profile_sheet_async(
+    df: pd.DataFrame, 
+    plan: SheetAnalysisPlan
+) -> Tuple[str, ProfilerReport]:
     """Runs statistical profiling on a single dataframe in a thread pool."""
     cols_to_drop = list(set(plan.id_like_columns + plan.excluded_from_profiling))
     df_clean = df.drop(columns=[c for c in cols_to_drop if c in df.columns], errors="ignore")
@@ -151,8 +152,17 @@ async def _profile_sheet_async(df: pd.DataFrame, plan: SheetAnalysisPlan) -> tup
 # SHARED CORE PHASES (The DRY Engine)
 # ---------------------------------------------------------------------------
 
-async def _shared_phase2_strategy(global_map, memory_store, agent_deps, mission_label="Mission") -> MultiSheetStrategy | None:
+async def _shared_phase2_strategy(
+    global_map: GlobalDiscoveryMap,
+    memory_store: AnalystMemoryStore, 
+    agent_deps: AgentDeps, 
+    mission_label: str = "Mission",
+    bridge: UIBridge | None = None
+) -> MultiSheetStrategy | None:
     """Shared Phase 2: High-level orchestration and adaptive pruning."""
+    if bridge:
+        await bridge.emit(2, "Strategy", "running", f"CDO is defining strategy for {mission_label}")
+
     with logfire.span(f"Phase 2: {mission_label} Strategy"):
         num_items = len(global_map.sheets)
         
@@ -180,31 +190,35 @@ async def _shared_phase2_strategy(global_map, memory_store, agent_deps, mission_
         try:
             strategy_res = await multi_orchestrator_agent.run(input_text, deps=agent_deps)
             strategy = strategy_res.output
-            print(f"🎯 {mission_label} Hypothesis: {strategy.business_hypothesis}")
+            
+            if bridge:
+                await bridge.emit(2, "Strategy", "done", f"Strategy defined: {strategy.business_hypothesis[:50]}...")
+                
             return strategy
         except Exception as e:
             logfire.error(f"{mission_label} strategy failed", error=str(e))
+            if bridge:
+                await bridge.emit(2, "Strategy", "error", f"Strategy failed: {str(e)}")
             return None
 
 
-def _shared_phase3_joins(dfs: Dict[str, pd.DataFrame], strategy: MultiSheetStrategy, schema_hash: str) -> List[JoinMemoryRecord]:
-    """Shared Phase 3: Executing tactical joins across DataFrames."""
+def _run_joins_sync(
+    dfs: Dict[str, pd.DataFrame],
+    strategy: MultiSheetStrategy,
+    schema_hash: str,
+) -> List[JoinMemoryRecord]:
+    """CPU-bound join execution; run via asyncio.to_thread to avoid blocking the event loop."""
     executed_records: List[JoinMemoryRecord] = []
-    
     with logfire.span("Phase 3: Tactical Joins"):
         for join_instr in strategy.joins_to_execute:
             try:
                 if join_instr.left_sheet not in dfs or join_instr.right_sheet not in dfs:
                     continue
-                
                 left_df, right_df = dfs[join_instr.left_sheet], dfs[join_instr.right_sheet]
-                
                 if join_instr.on_column not in left_df.columns or join_instr.on_column not in right_df.columns:
                     continue
-
                 merged = left_df.merge(right_df, on=join_instr.on_column, how=join_instr.join_type)
                 dfs[join_instr.result_name] = merged
-                
                 executed_records.append(JoinMemoryRecord(
                     schema_hash=schema_hash,
                     left_sheet=join_instr.left_sheet,
@@ -217,12 +231,34 @@ def _shared_phase3_joins(dfs: Dict[str, pd.DataFrame], strategy: MultiSheetStrat
                 ))
             except Exception as e:
                 logfire.error(f"Join {join_instr.result_name} failed: {e}")
-                
     return executed_records
 
 
-async def _shared_phase4_profiling(dfs, strategy, mission_label="Mission"):
+async def _shared_phase3_joins(
+    dfs: Dict[str, pd.DataFrame],
+    strategy: MultiSheetStrategy,
+    schema_hash: str,
+    bridge: UIBridge | None = None,
+) -> List[JoinMemoryRecord]:
+    """Shared Phase 3: Executing tactical joins with UI reporting (CPU work offloaded to thread)."""
+    if bridge:
+        await bridge.emit(3, "Joins", "running", f"Executing {len(strategy.joins_to_execute)} tactical joins")
+    executed_records = await asyncio.to_thread(_run_joins_sync, dfs, strategy, schema_hash)
+    if bridge:
+        await bridge.emit(3, "Joins", "done", f"Successfully merged {len(executed_records)} tables")
+    return executed_records
+
+
+async def _shared_phase4_profiling(
+    dfs: Dict[str, pd.DataFrame], 
+    strategy: MultiSheetStrategy, 
+    mission_label: str = "Mission",
+    bridge: UIBridge | None = None
+) -> Dict[str, ProfilerReport]: 
     """Shared Phase 4: Parallel profiling of all active datasets."""
+    if bridge:
+        await bridge.emit(4, "Profiling", "running", f"Starting parallel profiling for {mission_label}")
+
     with logfire.span(f"Phase 4: Parallel Profiling ({mission_label})"):
         active_plans = [p for p in strategy.per_sheet_plans if p.should_profile]
         tasks = [
@@ -231,28 +267,39 @@ async def _shared_phase4_profiling(dfs, strategy, mission_label="Mission"):
         ]
         
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-        profile_results = {}
+        profile_results: Dict[str, ProfilerReport] = {}
         
         for item in raw_results:
             if not isinstance(item, BaseException):
-                name, report = cast(tuple, item)
+                name, report = cast(Tuple[str, ProfilerReport], item)
                 profile_results[name] = report
+        
+        if bridge:
+            await bridge.emit(4, "Profiling", "done", f"Profiling complete for {len(profile_results)} tables")
                 
-        return profile_results, {k: v.model_dump() for k, v in profile_results.items()}
+        return profile_results 
 
 
-async def _shared_phase5_synthesis(dfs, combined_data, strategy, mission_label="Mission"):
-    """Shared Phase 5: The iterative Analyst-Critic loop."""
+async def _shared_phase5_synthesis(
+    dfs: Dict[str, pd.DataFrame], 
+    combined_reports: Dict[str, ProfilerReport],
+    strategy: MultiSheetStrategy, 
+    mission_label: str = "Mission",
+    bridge: UIBridge | None = None
+) -> Tuple[AnalystOutput | None, CriticReport | None]:
+    """Shared Phase 5: The iterative Analyst-Critic loop with UI reporting."""
     with logfire.span(f"Phase 5: Synthesis & Validation ({mission_label})"):
         final_report_obj, critic_report = None, None
         
         specialist_template = _load_specialist_prompt(strategy.specialist_type)
         schema_context = "\n".join([f"• '{n}': {list(d.columns)}" for n, d in dfs.items()])
-        profiler_json_str = json.dumps(combined_data)
+        profiler_data = {k: v.model_dump() for k, v in combined_reports.items()}
+        profiler_json_str = json.dumps(profiler_data)
 
-        # Implementation of the Specialist Agency and Retry Loop
         for attempt in range(1, 5):
-            print(f"\n🚀 --- ATTEMPT {attempt}/4 ---")
+            if bridge:
+                await bridge.emit(5, "Synthesis", "running", f"Attempt {attempt}/4: Analyzing patterns...")
+            
             analyst_deps = AnalystDeps(dfs=dfs)
             
             if attempt == 1:
@@ -268,7 +315,7 @@ async def _shared_phase5_synthesis(dfs, combined_data, strategy, mission_label="
             else:
                 prompt = pb.build_retry_prompt(
                     template=_ANALYST_RETRY_TEMPLATE, 
-                    revision_instructions=_format_rewrites(critic_report), 
+                    revision_instructions=format_rewrites(critic_report), 
                     previous_narrative=final_report_obj.final_report_markdown if final_report_obj else ""
                 )
 
@@ -287,17 +334,31 @@ async def _shared_phase5_synthesis(dfs, combined_data, strategy, mission_label="
                 critic_report = critic_res.output
                 
                 if critic_report.approved: 
+                    if bridge:
+                        await bridge.emit(5, "Synthesis", "done", f"Analysis approved (Score: {critic_report.score})")
                     break
                 
-                _print_rejection_detail(critic_report, attempt, 4)
+                if bridge:
+                    await bridge.emit(5, "Synthesis", "running", f"Attempt {attempt} rejected: {len(critic_report.findings)} issues found.")
+                    
             except Exception as e:
                 logfire.error(f"Attempt {attempt} failed", error=str(e))
+                if bridge:
+                    await bridge.emit(5, "Synthesis", "error", f"Critical error in Attempt {attempt}")
                 
         return final_report_obj, critic_report
 
 
-async def _shared_phase5_5_persist_memory(schema_hash, records, critic_report, final_report_obj, manager, store, label):
-    """Shared Phase 5.5: Persisting findings to long-term memory."""
+async def _shared_phase5_5_persist_memory(
+    schema_hash: str,
+    records: List[JoinMemoryRecord],
+    critic_report: CriticReport | None,
+    final_report_obj: AnalystOutput | None,
+    manager: MemoryManager,
+    store: AnalystMemoryStore,
+    label: str
+) -> None:
+    """Shared Phase 5.5: Memory Persistence and Warning aggregation."""
     if not (critic_report and final_report_obj): 
         return
         
@@ -326,7 +387,13 @@ async def _shared_phase5_5_persist_memory(schema_hash, records, critic_report, f
         logfire.error(f"Memory persistence failed for {label}: {e}")
 
 
-async def _shared_phase6_formatting(title, filename, strategy, report, critic):
+async def _shared_phase6_formatting(
+    title: str, 
+    filename: str, 
+    strategy: MultiSheetStrategy, 
+    report: AnalystOutput | None, 
+    critic: CriticReport | None
+) -> str | None:
     """Shared Phase 6: PPTX generation architecture."""
     if not (critic and critic.approved and report): 
         return None
@@ -354,25 +421,33 @@ async def _shared_phase6_formatting(title, filename, strategy, report, critic):
 # MISSION ENTRY POINTS
 # ---------------------------------------------------------------------------
 
-async def execute_analysis_mission(file_path: str, target_sheet: str = "order_items") -> dict | None:
-    """Entry point for single-sheet file analysis."""
+async def execute_analysis_mission(file_path: str, target_sheet: str = "order_items", bridge: UIBridge | None = None) -> dict | None:
+    """Entry point for single-sheet file analysis with UI bridge support."""
     path = resolve_file_path(file_path)
     if not path.exists(): 
         return None
     
     ext = path.suffix.lower()
     
+    if bridge:
+        await bridge.emit(1, "Discovery", "running", f"Analyzing single sheet '{target_sheet}' in {path.name}")
+    
     with logfire.span(f"Single-Sheet Mission: {path.name}"):
-        discovery = run_dataset_discovery(path)
+        discovery = await asyncio.to_thread(run_dataset_discovery, path)
         meta = discovery.sheets.get(target_sheet) if ext != ".csv" else next(iter(discovery.sheets.values()), None)
         
         if not meta: 
+            if bridge:
+                await bridge.emit(1, "Discovery", "error", f"Sheet '{target_sheet}' not found")
             return None
             
         strat_res = await orchestrator_agent.run(f"Define strategy for {meta.name}: {meta.model_dump_json()}")
         strategy = strat_res.output
         
-        df = pd.read_csv(path) if ext == ".csv" else pd.read_excel(path, sheet_name=meta.name)
+        if bridge:
+            await bridge.emit(2, "Strategy", "done", f"Strategy defined for {meta.name}")
+
+        df = await asyncio.to_thread(_load_single_sheet_sync, path, ext, meta.name)
         _, raw = await _profile_sheet_async(df, SheetAnalysisPlan(sheet_name=meta.name, **strategy.model_dump()))
         
         shared_strat = MultiSheetStrategy(
@@ -382,11 +457,13 @@ async def execute_analysis_mission(file_path: str, target_sheet: str = "order_it
             cross_sheet_hypothesis=""
         )
         
+        # Pass bridge to synthesis
         report, critic = await _shared_phase5_synthesis(
             {meta.name: df}, 
-            {meta.name: raw.model_dump()}, 
+            {meta.name: raw}, 
             shared_strat, 
-            "Single-Sheet"
+            "Single-Sheet",
+            bridge=bridge
         )
         
         pptx = await _shared_phase6_formatting(
@@ -397,36 +474,42 @@ async def execute_analysis_mission(file_path: str, target_sheet: str = "order_it
             critic
         )
         
-        narrative = report.final_report_markdown if report else ""
-        _display_mission_summary("Single-Sheet", "File", path.name, "Sheet", target_sheet, strategy.specialist_type.value, critic, pptx, narrative)
+        if bridge and pptx:
+            await bridge.emit(6, "Rendering", "done", f"Final PPTX: {pptx}")
         
         return {
-            "narrative": narrative, 
+            "narrative": report.final_report_markdown if report else "", 
             "critic_score": critic.score if critic else 0.0, 
             "pptx_path": pptx
         }
 
 
-async def execute_multi_sheet_mission(file_path: str) -> dict | None:
-    """Entry point for multi-sheet Excel/CSV file analysis."""
+async def execute_multi_sheet_mission(file_path: str, bridge: UIBridge | None = None) -> dict | None:
+    """Entry point for multi-sheet analysis with UI bridge support."""
     path = resolve_file_path(file_path)
     if not path.exists(): 
         return None
         
+    if bridge:
+        await bridge.emit(1, "Discovery", "running", f"Initializing discovery for {path.name}")
+
     with logfire.span(f"Multi-Sheet Mission: {path.name}"):
-        # Discovery & Memory Loading
-        discovery = run_dataset_discovery(path)
+        discovery = await asyncio.to_thread(run_dataset_discovery, path)
         schema_hash = generate_schema_hash(discovery.model_dump())
         
         manager = MemoryManager()
         await manager.init()
         store = await manager.load(schema_hash)
         
+        if bridge:
+            await bridge.emit(1, "Discovery", "done", f"Metadata ready. Hash: {schema_hash}")
+
         strategy = await _shared_phase2_strategy(
             discovery, 
             store, 
             AgentDeps(memory_store=store, schema_hash=schema_hash), 
-            "Multi-Sheet"
+            "Multi-Sheet",
+            bridge=bridge
         )
         
         if not strategy: 
@@ -434,22 +517,22 @@ async def execute_multi_sheet_mission(file_path: str) -> dict | None:
             return None
             
         try:
-            dfs = {
-                n: pd.read_excel(path, sheet_name=n) if path.suffix == ".xlsx" else pd.read_csv(path) 
-                for n in discovery.sheets
-            }
-            joins = _shared_phase3_joins(dfs, strategy, schema_hash)
-            profiles, combined = await _shared_phase4_profiling(dfs, strategy, "Multi-Sheet")
-            
-            report, critic = await _shared_phase5_synthesis(dfs, combined, strategy, "Multi-Sheet")
+            sheet_names = list(discovery.sheets)
+            dfs = await asyncio.to_thread(_load_dataframes_from_file_sync, path, sheet_names)
+            # Execute tactical joins with UI reporting (CPU-bound work in thread)
+            joins = await _shared_phase3_joins(dfs, strategy, schema_hash, bridge=bridge)            
+            # Execute parallel profiling with UI reporting
+            profiles = await _shared_phase4_profiling(dfs, strategy, "Multi-Sheet", bridge=bridge)            
+            report, critic = await _shared_phase5_synthesis(dfs, profiles, strategy, "Multi-Sheet", bridge=bridge)
             await _shared_phase5_5_persist_memory(schema_hash, joins, critic, report, manager, store, "Multi-Sheet")
         finally: 
             await manager.close()
             
         pptx = await _shared_phase6_formatting(f"{path.stem} Analysis", f"output_{path.stem}_multi.pptx", strategy, report, critic)
         
-        _display_mission_summary("Multi-Sheet", "File", path.name, "Sheets", ", ".join(profiles.keys()), strategy.specialist_type.value, critic, pptx, report.final_report_markdown if report else "")
-        
+        if bridge and pptx:
+            await bridge.emit(6, "Rendering", "done", f"PowerPoint generated: {pptx}")
+            
         return {
             "strategy": strategy, 
             "profile_results": profiles, 
@@ -458,23 +541,30 @@ async def execute_multi_sheet_mission(file_path: str) -> dict | None:
         }
 
 
-async def execute_sql_mission(connection_input: str) -> dict | None:
-    """Entry point for SQL database analysis."""
+async def execute_sql_mission(connection_input: str, bridge: UIBridge | None = None) -> dict | None:
+    """Entry point for SQL database analysis with UI bridge support."""
     engine, display_path = resolve_sql_connection(connection_input)
     
+    if bridge:
+        await bridge.emit(1, "Discovery", "running", f"Connecting to database: {display_path}")
+    
     with logfire.span(f"SQL Mission: {display_path}"):
-        discovery = run_sql_discovery(engine, display_path)
+        discovery = await asyncio.to_thread(run_sql_discovery, engine, display_path)
         schema_hash = generate_schema_hash(discovery.model_dump())
         
         manager = MemoryManager()
         await manager.init()
         store = await manager.load(schema_hash)
         
+        if bridge:
+            await bridge.emit(1, "Discovery", "done", f"SQL Discovery complete. Found {len(discovery.sheets)} tables.")
+        
         strategy = await _shared_phase2_strategy(
             discovery, 
             store, 
             AgentDeps(memory_store=store, schema_hash=schema_hash), 
-            "SQL"
+            "SQL",
+            bridge=bridge
         )
         
         if not strategy: 
@@ -483,25 +573,27 @@ async def execute_sql_mission(connection_input: str) -> dict | None:
             return None
             
         try:
-            # Table loading with proper quoting
-            dfs = {
-                n: pd.read_sql(text(f"SELECT * FROM {engine.dialect.identifier_preparer.quote(n)}"), engine) 
-                for n in discovery.sheets
-            }
+            table_names = list(discovery.sheets)
+            dfs = await asyncio.to_thread(_load_dataframes_from_sql_sync, engine, table_names)
             engine.dispose()
+
+            # Execute SQL joins with UI reporting (CPU-bound work in thread)
+            joins = await _shared_phase3_joins(dfs, strategy, schema_hash, bridge=bridge)
             
-            joins = _shared_phase3_joins(dfs, strategy, schema_hash)
-            profiles, combined = await _shared_phase4_profiling(dfs, strategy, "SQL")
+            # Execute SQL profiling with UI reporting
+            profiles = await _shared_phase4_profiling(dfs, strategy, "SQL", bridge=bridge)
             
-            report, critic = await _shared_phase5_synthesis(dfs, combined, strategy, "SQL")
+            # Pass bridge to synthesis
+            report, critic = await _shared_phase5_synthesis(dfs, profiles, strategy, "SQL", bridge=bridge)
             await _shared_phase5_5_persist_memory(schema_hash, joins, critic, report, manager, store, "SQL")
         finally: 
             await manager.close()
             
         pptx = await _shared_phase6_formatting(f"{display_path.split('/')[-1]} DB", "output_sql.pptx", strategy, report, critic)
         
-        _display_mission_summary("SQL", "DB", display_path, "Tables", ", ".join(profiles.keys()), strategy.specialist_type.value, critic, pptx, report.final_report_markdown if report else "")
-        
+        if bridge and pptx:
+            await bridge.emit(6, "Rendering", "done", "SQL Analysis complete and PPTX generated")
+            
         return {
             "strategy": strategy, 
             "profile_results": profiles, 
