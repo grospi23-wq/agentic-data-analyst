@@ -10,6 +10,7 @@ import asyncio
 import json
 import logfire
 import pandas as pd
+import numpy as np
 import sys
 from pathlib import Path
 from typing import Dict, List, cast, Tuple, Optional
@@ -26,6 +27,7 @@ from agents import (
     multi_orchestrator_agent,
     formatter_agent,
     load_prompt,
+    get_execution_backend,
 )
 from memory_schema import (
     AnalystMemoryStore,
@@ -92,7 +94,7 @@ async def _self_validate_report(report: AnalystOutput, analyst_deps: AnalystDeps
     prompt = pb.build_self_validation_prompt(
         template=_SELF_VALIDATION_TEMPLATE,
         schema_context=schema_context,
-        chain_of_thought=report.internal_thought_process,
+        validation_notes=report.validation_notes,
         draft_narrative=report.final_report_markdown
     )
     result = await analyst_agent.run(prompt, deps=analyst_deps)
@@ -300,8 +302,11 @@ async def _shared_phase5_synthesis(
             if bridge:
                 await bridge.emit(5, "Synthesis", "running", f"Attempt {attempt}/4: Analyzing patterns...")
             
-            analyst_deps = AnalystDeps(dfs=dfs)
-            
+            analyst_deps = AnalystDeps(
+                dfs=dfs,
+                executor=get_execution_backend(),
+                namespace={"dfs": dfs, "pd": pd, "np": np}
+            )
             if attempt == 1:
                 prompt = pb.build_analyst_mission_prompt(
                     template=specialist_template, 

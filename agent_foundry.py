@@ -102,17 +102,19 @@ openrouter_provider = OpenAIProvider(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
+ARCHITECT_MODEL = os.getenv("OPENROUTER_ARCHITECT_MODEL", "openrouter/auto")
+QA_MODEL = os.getenv("OPENROUTER_QA_MODEL", "openrouter/auto")
 
 # Architect: generates library code and matching pytest suite
 architect_agent = Agent(
-    OpenAIChatModel("anthropic/claude-3.5-sonnet", provider=openrouter_provider),
+    OpenAIChatModel(ARCHITECT_MODEL, provider=openrouter_provider),
     output_type=GeneratedModule,
     system_prompt=load_prompt("architect"),
 )
 
 # QA Engineer: reviews code + pytest report, returns structured feedback only
 qa_agent = Agent(
-    OpenAIChatModel("openai/gpt-4o-mini", provider=openrouter_provider),
+    OpenAIChatModel(QA_MODEL, provider=openrouter_provider),
     output_type=QAFeedback,
     system_prompt=load_prompt("qa_engineer"),
 )

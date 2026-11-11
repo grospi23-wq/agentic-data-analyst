@@ -174,41 +174,41 @@ class TestBuildRetryPrompt:
 # ---------------------------------------------------------------------------
 
 class TestBuildSelfValidationPrompt:
-    TEMPLATE = "CoT:\n{chain_of_thought}\n\nDraft:\n{draft_narrative}"
+    TEMPLATE = "Validation notes:\n{validation_notes}\n\nDraft:\n{draft_narrative}"
 
     def test_schema_header_prepended(self):
         result = build_self_validation_prompt(
             template=self.TEMPLATE,
             schema_context="Table 'orders'",
-            chain_of_thought=["step 1", "step 2"],
+            validation_notes=["step 1", "step 2"],
             draft_narrative="Draft report here.",
         )
         assert result.startswith("CRITICAL — VERIFIED SCHEMA")
 
-    def test_chain_of_thought_joined_with_newlines(self):
+    def test_validation_notes_joined_with_newlines(self):
         result = build_self_validation_prompt(
             template=self.TEMPLATE,
             schema_context="ctx",
-            chain_of_thought=["First reasoning step.", "Second reasoning step."],
+            validation_notes=["First validation note.", "Second validation note."],
             draft_narrative="draft",
         )
-        assert "First reasoning step." in result
-        assert "Second reasoning step." in result
+        assert "First validation note." in result
+        assert "Second validation note." in result
 
     def test_draft_narrative_injected(self):
         result = build_self_validation_prompt(
             template=self.TEMPLATE,
             schema_context="ctx",
-            chain_of_thought=[],
+            validation_notes=[],
             draft_narrative="Final narrative text.",
         )
         assert "Final narrative text." in result
 
-    def test_empty_chain_of_thought(self):
+    def test_empty_validation_notes(self):
         result = build_self_validation_prompt(
             template=self.TEMPLATE,
             schema_context="ctx",
-            chain_of_thought=[],
+            validation_notes=[],
             draft_narrative="draft",
         )
         assert isinstance(result, str)

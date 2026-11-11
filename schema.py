@@ -102,8 +102,8 @@ class ChartSpec(BaseModel):
     )
 
 class AnalystOutput(BaseModel):
-    internal_thought_process: List[str] = Field(
-        ..., description="Step-by-step reasoning and mathematical checks."
+    validation_notes: List[str] = Field(
+        ..., description="Auditable evidence and validation checks supporting the report."
     )
     hypothesis_validation: str = Field(
         ..., description="Confirmation or rejection of the CDO's hypothesis."

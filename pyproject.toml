@@ -1,12 +1,13 @@
 [project]
 name = "agentic-data-analyst"
 version = "0.1.0"
-description = "Add your description here"
+description = "A personal multi-agent data analysis project for CSV, Excel, and SQL sources."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.22.1",
     "anthropic>=0.79.0",
+    "e2b-code-interpreter>=2.4.1",
     "gradio>=6.9.0",
     "ipykernel>=7.2.0",
     "langgraph>=1.0.9",
@@ -41,3 +42,7 @@ asyncio_mode = "auto"
 
 # Set default scope for async fixtures to prevent warnings in newer versions
 asyncio_default_fixture_loop_scope = "function"
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that require a live model provider and credentials",
+]

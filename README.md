@@ -7,12 +7,12 @@
 ![SQLite](https://img.shields.io/badge/Memory-aiosqlite-003B57)
 ![Logfire](https://img.shields.io/badge/Observability-Logfire-red)
 
-An enterprise-grade, multi-agent AI system designed to autonomously profile, analyze, and visualize complex relational datasets (Excel/CSV).
+A personal portfolio project that uses a multi-agent AI workflow to profile, analyze, and visualize relational datasets from Excel, CSV, and SQL sources.
 
 ## 📺 Live Demo: Northwind Analysis
 ![Autonomous Data Analysis Demo](./demo.svg)
 
-> **Note:** This recording demonstrates the system resolving a dataset from the Windows Downloads folder, identifying 9 table relationships, and performing complex multi-sheet joins using GPT-4o and Claude 3.5 Sonnet.
+> **Note:** This recording demonstrates the system resolving a dataset from the Windows Downloads folder, identifying 9 table relationships, and performing complex multi-sheet joins.
 
 ## 🎯 The Problem it Solves
 Standard LLM-based analysis often fails on real-world relational data because it:
@@ -59,7 +59,7 @@ The analysis is orchestrated via a 5-agent pipeline:
 
 ### Installation
 ```bash
-git clone https://github.com/yourusername/agentic-data-analyst.git
+git clone https://github.com/grospi23-wq/agentic-data-analyst.git
 cd agentic-data-analyst
 uv sync
 ```
@@ -68,6 +68,7 @@ uv sync
 Create a `.env` file in the root directory:
 ```env
 OPENROUTER_API_KEY=your_key_here
+# Optional: enable tracing with Logfire.
 LOGFIRE_TOKEN=your_logfire_token_here
 ```
 
@@ -83,6 +84,10 @@ python main.py data/complex_workbook.xlsx --sheet Q4_Report
 # Analyze a flat CSV
 python main.py data/churn.csv
 ```
+
+## Scope and Limitations
+
+This is a personal learning and portfolio project, not a production service. By default, the analyst can execute model-generated Python against local DataFrames. Only use trusted data and environments. Set `E2B_API_KEY` to use the optional isolated E2B backend instead of the local execution backend.
 
 ## 🛠️ Tech Stack
 * **Orchestration:** Pydantic-AI

@@ -10,8 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
+      # Imports validate configuration but unit tests must not call external models.
       OPENROUTER_API_KEY: "dummy-key"
-      LOGFIRE_TOKEN: "dummy-token"
       PYTHONPATH: ".:lib"
     steps:
       - name: Checkout code
@@ -26,5 +26,5 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run tests
+      - name: Run unit tests
         run: uv run pytest -v

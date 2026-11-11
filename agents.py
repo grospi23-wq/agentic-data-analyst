@@ -8,7 +8,7 @@ Optimized for modular execution and structured visualization data.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
 import logfire
-from execution_backend import LocalExecBackend
+# Import both backends and the protocol for type hinting
+from execution_backend import LocalExecBackend, E2BBackend, CodeExecutionBackend
 from schema import (
     AnalysisStrategy,
     AnalystOutput,
@@ -37,6 +38,18 @@ load_dotenv(override=True)
 # ---------------------------------------------------------------------------
 
 @dataclass
+class AnalystDeps:
+    """
+    Container for Analyst Agent dependencies.
+    - dfs: Dictionary of DataFrames for analysis.
+    - executor: The engine used to run Python code (Local or E2B).
+    - namespace: State dictionary maintained between code executions.
+    """
+    dfs: Dict[str, pd.DataFrame]
+    executor: Optional[CodeExecutionBackend] = None
+    namespace: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
 class AgentDeps:
     """
     Shared dependencies for orchestration agents (CDO).
@@ -47,23 +60,23 @@ class AgentDeps:
     )
     schema_hash: str = "none"
 
+# ---------------------------------------------------------------------------
+# Backend Factory
+# ---------------------------------------------------------------------------
 
-@dataclass
-class AnalystDeps:
+def get_execution_backend() -> CodeExecutionBackend:
     """
-    Dependencies for the Analyst agent, including live data access.
-    Updated constructor to handle optional parameters for modular execution.
+    Composition Root helper: Selects the appropriate execution engine.
+    - If E2B_API_KEY is present in environment, returns E2B cloud sandbox.
+    - Otherwise, falls back to LocalExecBackend for development.
     """
-    def __init__(
-        self,
-        dfs: Optional[Dict[str, pd.DataFrame]] = None,
-        namespace: Optional[dict] = None,
-        executor: Optional[LocalExecBackend] = None
-    ):
-        self.dfs = dfs if dfs is not None else {}
-        self.namespace = namespace if namespace is not None else {}
-        self.executor = executor if executor is not None else LocalExecBackend()
+    api_key = os.getenv("E2B_API_KEY")
+    if api_key:
+        # Secure cloud execution
+        return E2BBackend(api_key=api_key)
 
+    # Standard local execution fallback
+    return LocalExecBackend()
 
 # ---------------------------------------------------------------------------
 # Provider & Model Configuration
@@ -87,10 +100,18 @@ openrouter_provider = OpenAIProvider(
 # Model Configurations (Tiered Resource Allocation)
 # ---------------------------------------------------------------------------
 
+# --- Model Selection ---
+# Model IDs can be overridden independently without changing source code.
+# OpenRouter's Auto Router avoids pinning the project to a retired model.
+DEFAULT_MODEL = "openrouter/auto"
+CDO_MODEL = os.getenv("OPENROUTER_CDO_MODEL", DEFAULT_MODEL)
+ANALYST_MODEL = os.getenv("OPENROUTER_ANALYST_MODEL", DEFAULT_MODEL)
+CRITIC_MODEL = os.getenv("OPENROUTER_CRITIC_MODEL", DEFAULT_MODEL)
+FORMATTER_MODEL = os.getenv("OPENROUTER_FORMATTER_MODEL", DEFAULT_MODEL)
+
 # --- Heavy: High-capacity planning and synthesis (CDO, Analyst) ---
 # Used for complex schema mapping and long-form report writing.
-HEAVY_CLAUDE = ModelSettings(max_tokens=8000)
-HEAVY_GPT = ModelSettings(max_tokens=8000)
+HEAVY_MODEL = ModelSettings(max_tokens=8000)
 
 # --- Medium: Evaluation and validation (Critic) ---
 # Balanced for thorough auditing without excessive verbosity.
@@ -106,45 +127,45 @@ LIGHT_GPT = ModelSettings(max_tokens=3000)
 
 # Agent 1: Chief Data Officer (Single-Sheet)
 orchestrator_agent: Agent[None, AnalysisStrategy] = Agent(
-    OpenAIChatModel("anthropic/claude-3.5-sonnet", provider=openrouter_provider),
+    OpenAIChatModel(CDO_MODEL, provider=openrouter_provider),
     output_type=AnalysisStrategy,
     system_prompt=load_prompt("cdo_strategy"),
-    model_settings=HEAVY_CLAUDE,  # Upgrade to HEAVY
+    model_settings=HEAVY_MODEL,
 )
 
 # Agent 2: Senior Data Analyst
 analyst_agent: Agent[AnalystDeps, AnalystOutput] = Agent(
-    OpenAIChatModel("openai/gpt-4o", provider=openrouter_provider),
+    OpenAIChatModel(ANALYST_MODEL, provider=openrouter_provider),
     deps_type=AnalystDeps,
     output_type=AnalystOutput,
     system_prompt=load_prompt("analyst_synthesis"),
-    model_settings=HEAVY_GPT,  # Upgrade to HEAVY
+    model_settings=HEAVY_MODEL,
 )
 
 # Agent 3: Critic / Auditor
 critic_agent: Agent[None, CriticReport] = Agent(
-    OpenAIChatModel("anthropic/claude-3.5-sonnet", provider=openrouter_provider),
+    OpenAIChatModel(CRITIC_MODEL, provider=openrouter_provider),
     output_type=CriticReport,
     system_prompt=load_prompt("critic_auditor"),
-    model_settings=MEDIUM_CLAUDE,  # Set to MEDIUM
+    model_settings=MEDIUM_CLAUDE,
 )
 
 # Agent 4: Multi-Sheet/SQL CDO
 multi_orchestrator_agent: Agent[AgentDeps, MultiSheetStrategy] = Agent(
-    OpenAIChatModel("anthropic/claude-3.5-sonnet", provider=openrouter_provider),
+    OpenAIChatModel(CDO_MODEL, provider=openrouter_provider),
     deps_type=AgentDeps,
     output_type=MultiSheetStrategy,
     system_prompt=load_prompt("cdo_multi_sheet"),
-    model_settings=HEAVY_CLAUDE,  # Upgrade to HEAVY
+    model_settings=HEAVY_MODEL,
 )
 
 # Agent 5: Formatter
 formatter_agent: Agent[None, PresentationSpec] = Agent(
-    OpenAIChatModel("openai/gpt-4o", provider=openrouter_provider),
+    OpenAIChatModel(FORMATTER_MODEL, provider=openrouter_provider),
     output_type=PresentationSpec,
     retries=5,
     system_prompt=load_prompt("formatter_agent"), 
-    model_settings=LIGHT_GPT,  # Constraint to LIGHT
+    model_settings=LIGHT_GPT,
 )
 
 # ---------------------------------------------------------------------------
@@ -155,20 +176,19 @@ formatter_agent: Agent[None, PresentationSpec] = Agent(
 async def execute_python_analysis(ctx: RunContext[AnalystDeps], code: str) -> str:
     """
     Executes Python (Pandas/NumPy) on live DataFrames to extract numeric facts.
-    
-    CRITICAL FOR VISUALIZATION: 
-    If you identify an insight for a slide, you MUST use this tool to extract 
-    the exact data for the ChartSpec.
-    Example: print(dfs['orders'].groupby('status')['total'].sum().to_dict())
-    Use the resulting dictionary keys for labels and values for data points.
-    Never guess or hallucinate numbers for the charts list.
     """
+    # Fix for "OptionalMemberAccess": Explicitly check if executor is None
+    if ctx.deps.executor is None:
+        return "ERROR: No execution backend (executor) is configured in dependencies."
+
     dfs = ctx.deps.dfs
 
+    # Ensure namespace is initialized with base libraries
     if not ctx.deps.namespace:
         ctx.deps.namespace.update({"dfs": dfs, "pd": pd, "np": np})
     
     try:
+        # Now Pyright knows executor is not None here
         result = await ctx.deps.executor.run(code, ctx.deps.namespace)
         
         logfire.info(

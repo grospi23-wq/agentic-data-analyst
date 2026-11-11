@@ -1,11 +1,15 @@
 import asyncio
 import logfire
+import pytest
 from missions import execute_sql_mission
+
+pytestmark = pytest.mark.integration
 
 # Optional: Configure logfire to see the live trace
 logfire.configure()
 
-async def test_run():
+@pytest.mark.asyncio
+async def test_sql_mission_smoke():
     print("🚀 Starting SQL Mission Test on 'analyst_memory.db'...")
     
     # We pass the relative path to our SQLite file
@@ -18,7 +22,7 @@ async def test_run():
         print(f"💾 PPTX Created: {result.get('pptx_path')}")
         print("━"*40)
     else:
-        print("\n❌ TEST FAILED - Check logs for errors.")
+        pytest.fail("SQL mission did not return a result. Check the model provider configuration.")
 
 if __name__ == "__main__":
-    asyncio.run(test_run())
+    asyncio.run(test_sql_mission_smoke())

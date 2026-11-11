@@ -1,0 +1,13 @@
+customer_id,sales_amount,region,campaign_code
+C001,1200,North,
+C002,980,South,
+C003,1450,East,
+C004,1100,West,
+C005,870,North,
+C006,1320,South,
+C007,1040,East,
+C008,760,West,
+C009,1510,North,
+C010,920,South,
+C011,1180,East,
+C012,990,West,

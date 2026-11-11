@@ -55,20 +55,20 @@ def build_retry_prompt(
 def build_self_validation_prompt(
     template: str,
     schema_context: str,
-    chain_of_thought: list[str],
+    validation_notes: list[str],
     draft_narrative: str
 ) -> str:
     """
     Constructs the self-reflection prompt where the Analyst critiques its own draft
     before sending it to the formal Critic.
     """
-    cot_block = "\n".join(chain_of_thought)
+    validation_block = "\n".join(validation_notes)
     
     return (
         f"CRITICAL — VERIFIED SCHEMA (use these EXACT names, do not guess):\n"
         f"{schema_context}\n\n"
         + template.format(
-            chain_of_thought=cot_block,
+            validation_notes=validation_block,
             draft_narrative=draft_narrative
         )
     )

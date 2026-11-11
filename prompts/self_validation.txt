@@ -45,12 +45,12 @@ Apply the checklist below to your draft and return a corrected AnalystOutput.
    "X% of [entities] experienced [event] — this cohort shows..."
 
 Apply all corrections and return a complete revised AnalystOutput with updated
-internal_thought_process, hypothesis_validation, and final_report_markdown.
+validation_notes, hypothesis_validation, and final_report_markdown.
 
 === ORIGINAL DRAFT TO REVIEW ===
 
 Chain of Thought:
-{chain_of_thought}
+{validation_notes}
 
 Report:
 {draft_narrative}

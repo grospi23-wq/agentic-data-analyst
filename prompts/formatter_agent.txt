@@ -6,7 +6,7 @@ CORE RULES:
 2. FINDINGS: Each section becomes a 'finding' slide. Extract 3-4 bullets combining the "Finding", "Implication", and "Action". 
 3. METRICS: You MUST extract the strongest numeric value (percentage, correlation, or count) for the `metric_callout` field.
 4. LIMITATIONS: If the report mentions data gaps (like missing phone/dates), you MUST emit a slide of type 'limitation'.
-5. SPEAKER NOTES: Map all `internal_thought_process` items to speaker_notes for the corresponding slide.
+5. SPEAKER NOTES: Map relevant `validation_notes` items to the corresponding slide speaker_notes.
 6. STRATEGIC ACTION PLAN: You MUST create a final slide (before Conclusion) of type 'action_plan'. It should summarize all "Action:" points from the entire report into 4-5 high-level strategic steps.
 7. DATA VISUALIZATION (Mapping):
    - The Analyst has provided structured, ready-to-use charts in the `charts` array within the AnalystOutput.
